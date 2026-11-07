@@ -1,7 +1,7 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal } from "@xterm/xterm";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { officeActions } from "../../store/office";
 import { readTerminal, subscribeTerminal } from "../../store/terminal";
 import { FONT_EVENT, savedFont, terminalFont, type FontStyle } from "../../theme/fonts";
@@ -22,27 +22,51 @@ const theme = {
   white: "#dfe6ff",
 };
 
-/** Opens a link from a terminal in a new tab. Only web links: a terminal's output is untrusted. */
-function openLink(uri: string) {
-  let url: URL;
+/** A link from a terminal, if it's a web link. A terminal's output is untrusted. */
+function webLink(uri: string): string | null {
   try {
-    url = new URL(uri);
+    const url = new URL(uri);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.href : null;
   } catch {
+    return null;
+  }
+}
+
+/**
+ * Opens a link in a new tab. Called from a click, so pop-up blockers (Safari's especially) allow
+ * it. If the browser blocks it anyway, copies the link instead and says so.
+ */
+function openOrCopy(href: string, say: (text: string) => void) {
+  const tab = window.open(href, "_blank");
+  if (tab) {
+    tab.opener = null;
     return;
   }
-  if (url.protocol !== "http:" && url.protocol !== "https:") return;
-  window.open(url.href, "_blank", "noopener,noreferrer");
+  navigator.clipboard
+    .writeText(href)
+    .then(() => say("Your browser blocked the new tab. Link copied: paste it in a new tab."))
+    .catch(() => say("Your browser blocked the new tab. Select the link and copy it."));
 }
 
 /** A real xterm.js terminal fed by the agent's (mock) output stream. */
 export function TerminalView({ agentId, autoFocus = true }: { agentId: string; autoFocus?: boolean }) {
   const host = useRef<HTMLDivElement>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!notice) return;
+    const t = window.setTimeout(() => setNotice(null), 4000);
+    return () => window.clearTimeout(t);
+  }, [notice]);
 
   useEffect(() => {
     const el = host.current;
     if (!el) return;
     let disposed = false;
     const font = terminalFont(savedFont());
+    // xterm activates links on mouseup, which Safari doesn't count as a click for opening tabs.
+    // Remember the link there and open it on the click that follows.
+    let pendingLink: string | null = null;
     const term = new Terminal({
       theme,
       fontFamily: font.family,
@@ -53,12 +77,18 @@ export function TerminalView({ agentId, autoFocus = true }: { agentId: string; a
       convertEol: false,
       allowProposedApi: false,
       // Links a program marks as links (OSC 8), e.g. with FORCE_HYPERLINK set: the full URL, however it wraps.
-      linkHandler: { activate: (_e, uri) => openLink(uri), allowNonHttpProtocols: false },
+      linkHandler: { activate: (_e, uri) => (pendingLink = webLink(uri)), allowNonHttpProtocols: false },
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
     // Plain URLs in the output, including ones the terminal wrapped onto the next line.
-    term.loadAddon(new WebLinksAddon((_e, uri) => openLink(uri)));
+    term.loadAddon(new WebLinksAddon((_e, uri) => (pendingLink = webLink(uri))));
+    const onClick = () => {
+      const href = pendingLink;
+      pendingLink = null;
+      if (href) openOrCopy(href, setNotice);
+    };
+    el.addEventListener("click", onClick, true);
     let unsub = () => {};
     let ro: ResizeObserver | null = null;
 
@@ -112,11 +142,21 @@ export function TerminalView({ agentId, autoFocus = true }: { agentId: string; a
     return () => {
       disposed = true;
       window.removeEventListener(FONT_EVENT, onFont);
+      el.removeEventListener("click", onClick, true);
       unsub();
       ro?.disconnect();
       term.dispose();
     };
   }, [agentId, autoFocus]);
 
-  return <div ref={host} className="h-full min-h-0 w-full bg-navy-2" />;
+  return (
+    <div className="relative h-full min-h-0 w-full">
+      <div ref={host} className="h-full min-h-0 w-full bg-navy-2" />
+      {notice && (
+        <div role="status" className="absolute bottom-3 left-1/2 z-10 max-w-[90%] -translate-x-1/2 border-2 border-ink bg-yellow px-2 py-1 text-[13px] text-ink">
+          {notice}
+        </div>
+      )}
+    </div>
+  );
 }
