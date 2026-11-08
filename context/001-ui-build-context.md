@@ -1,5 +1,7 @@
 # JSM HQ — Build Context (UI MVP, pixel office)
 
+> **History.** This is the brief for the first, UI-only version of HQ (mock data, no backend). HQ has since gained a real server, sandboxes and GitHub. For how it works today, see [docs/how-it-works.md](../docs/how-it-works.md).
+
 Context for an AI coding agent. Build the **complete JSM HQ interface with mock data and no real backend.** Every piece of data comes from one mock data source that follows the same interface the real local HQ server will use later.
 
 Plan: `context/plans/001-jsm-hq-ui.md`.
