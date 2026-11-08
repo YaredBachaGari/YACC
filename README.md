@@ -106,6 +106,7 @@ More detail on workspaces, sandboxes, MCP servers, app variables and what HQ sav
 - [Getting started](docs/getting-started.md): install everything and run your first team.
 - [How it works](docs/how-it-works.md): workspaces, sandboxes, GitHub, MCP, settings and files.
 - [Contributing](CONTRIBUTING.md): run HQ from source and release it.
+- [Security](SECURITY.md): report a vulnerability privately.
 
 ## License
 

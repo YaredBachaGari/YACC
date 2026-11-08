@@ -40,6 +40,7 @@
     "scripts/fix-node-pty.mjs",
     "LICENSE",
     "TRADEMARKS.md",
+    "SECURITY.md",
     "README.md"
   ],
   "engines": {
