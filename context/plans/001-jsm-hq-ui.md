@@ -30,7 +30,7 @@ A local web app that shows a configurable team of AI coding agents working in a 
 - Desktop only, at least 1280px wide.
 
 ### How to build it
-1. **Rewrite `docs/jsmhq-context.md`** to match this plan: 2D, configurable, boards, workflow, sandbox settings, team MCP. It's the source of truth for the build.
+1. **Rewrite `context/001-ui-build-context.md`** (was `docs/jsmhq-context.md`) to match this plan: 2D, configurable, boards, workflow, sandbox settings, team MCP. It's the source of truth for the build.
 2. **Set up the project:** Vite, React and TypeScript, Tailwind, zustand, PixiJS v8, xterm and framer-motion with pnpm, plus the colors, fonts and pixel palette.
 3. **Define the data layer:** types for the config (`ProjectConfig`, `AgentConfig`, `WorkflowConfig`, `SandboxSettings`, `Board`) and the live data (`Agent`, `Task`, `PullRequest`, `Environment`, `AgentMessage`, `ActivityEvent`). Extend `OfficeDataSource` with config commands: add, update and remove an agent; update the workflow; update sandbox settings; set a secret name; create a board; assign a task; send terminal input; set speed. Then build the mock source with both sample datasets, a timeline that loops and scales with the team, and fake terminal scripts. The zustand store is fed only through the data source.
 4. **Build the pixel engine:** turn character grids into cached textures, recolor per agent and state, add pixel-font text, and a camera with drag-to-pan and whole-number zoom levels.

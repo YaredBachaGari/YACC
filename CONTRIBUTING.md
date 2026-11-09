@@ -34,8 +34,8 @@ src/
   ui/        Top bar, team panel, activity, drawers, settings, setup checklist, welcome
 server/      Local HQ server: setup checks, workspaces, sessions (tmux, or HQ-run on Windows), sbx, hooks, Team MCP, GitHub
 bin/         The jsm-hq command
-docs/        User guides, and the product spec (jsmhq-context.md)
-context/     Implementation plans
+docs/        User guides
+context/     Implementation plans, and the first UI build brief (001-ui-build-context.md)
 ```
 
 ## Docker Sandboxes versions
