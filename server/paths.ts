@@ -9,9 +9,9 @@ export const slugify = (s: string) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "") || "project";
 
-/** ~/.jsmhq/<project>/ — HQ's per-project home (agent folders, tokens). */
+/** ~/.yacc/<project>/ — HQ's per-project home (agent folders, tokens). */
 export function projectHome(projectSlug: string): string {
-  const dir = join(homedir(), ".jsmhq", projectSlug);
+  const dir = join(homedir(), ".yacc", projectSlug);
   mkdirSync(dir, { recursive: true });
   return dir;
 }

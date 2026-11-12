@@ -41,7 +41,7 @@ interface UiState {
   drawerMaximized: boolean;
 }
 
-const WIDTH_KEY = "jsmhq.drawerWidth";
+const WIDTH_KEY = "yacc.drawerWidth";
 export const DRAWER_MIN = 420;
 export const DRAWER_DEFAULT = 520;
 

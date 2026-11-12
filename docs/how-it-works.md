@@ -1,4 +1,4 @@
-# How JSM HQ works
+# How YACC works
 
 What HQ does behind the office: where agents work, how they talk, what reaches GitHub, and what HQ saves. New here? Start with the [getting-started guide](getting-started.md).
 
@@ -27,8 +27,8 @@ New teams get names from The Office: Michael leads, then Dwight, Jim, Pam and so
 
 ## Workspaces and sessions
 
-- **Its own copy of the repo.** Each agent gets a full clone at `~/.jsmhq/<project>/<agent>/`. Your own working folder is never touched.
-- **Its instructions.** HQ writes `.jsmhq-role.md` into that folder: the agent's role (the ROLE.md text from Settings → Team), the team, the rules and its tools. HQ also adds its hooks and MCP config there, and keeps all of these out of git. If the folder has its own `ROLE.md`, HQ includes it and never overwrites it.
+- **Its own copy of the repo.** Each agent gets a full clone at `~/.yacc/<project>/<agent>/`. Your own working folder is never touched.
+- **Its instructions.** HQ writes `.yacc-role.md` into that folder: the agent's role (the ROLE.md text from Settings → Team), the team, the rules and its tools. HQ also adds its hooks and MCP config there, and keeps all of these out of git. If the folder has its own `ROLE.md`, HQ includes it and never overwrites it.
 - **Its session.** On macOS and Linux each agent runs in a tmux session called `hq-<project>-<agent>`, so agents keep working if you close HQ or the browser. You can watch one from any terminal with `tmux attach -t hq-<project>-<agent>`, or open its drawer in HQ.
 
 ## Messages between agents
@@ -127,12 +127,12 @@ HQ never stores key values and never reads your env files.
 
 | File | What | Commit it? |
 | --- | --- | --- |
-| `.jsmhq/config.json` (in your repo) | Team, workflow, stack, office name | Yes, so your team shares it |
-| `.jsmhq/plan.json` (in your repo) | Boards and tasks | Yes |
+| `.yacc/config.json` (in your repo) | Team, workflow, stack, office name | Yes, so your team shares it |
+| `.yacc/plan.json` (in your repo) | Boards and tasks | Yes |
 | `docs/plan.md` (in your repo) | A readable copy of the plan, if **Settings → Project → Export plan** is on | Yes |
-| `~/.jsmhq/<project>/` | Agents' folders, app variables, action items and HQ's own records | No, it's outside your repo, on your machine only |
+| `~/.yacc/<project>/` | Agents' folders, app variables, action items and HQ's own records | No, it's outside your repo, on your machine only |
 
-**Remove a project:** delete each agent in Settings → Team (this removes its sandbox and, if you choose, its folder), then delete `~/.jsmhq/<project>`.
+**Remove a project:** delete each agent in Settings → Team (this removes its sandbox and, if you choose, its folder), then delete `~/.yacc/<project>`.
 
 ## Windows
 

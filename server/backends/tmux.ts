@@ -19,9 +19,9 @@ export const loadEnvFile = (quotedPath: string) =>
   // CRLF files: drop the \r. Lines whose key isn't a valid name are skipped (export would stop the shell).
   // Scratch names are unlikely to clash with app variables and are unset afterwards; the CR is
   // computed per line, so nothing in the file can change it.
-  `while IFS= read -r __jsmhq_l || [ -n "$__jsmhq_l" ]; do __jsmhq_l=\${__jsmhq_l%"$(printf '\\r')"}; __jsmhq_k=\${__jsmhq_l%%=*}; ` +
-  `case "$__jsmhq_l" in *=*) case "$__jsmhq_k" in ""|[!A-Za-z_]*|*[!A-Za-z0-9_]*) ;; *) export "$__jsmhq_l";; esac;; esac; done < ${quotedPath}; ` +
-  `unset __jsmhq_l __jsmhq_k`;
+  `while IFS= read -r __yacc_l || [ -n "$__yacc_l" ]; do __yacc_l=\${__yacc_l%"$(printf '\\r')"}; __yacc_k=\${__yacc_l%%=*}; ` +
+  `case "$__yacc_l" in *=*) case "$__yacc_k" in ""|[!A-Za-z_]*|*[!A-Za-z0-9_]*) ;; *) export "$__yacc_l";; esac;; esac; done < ${quotedPath}; ` +
+  `unset __yacc_l __yacc_k`;
 
 /** The shell line tmux runs. Local mode loads the env file into that shell. */
 export function shellCommand(spec: LaunchSpec): string {

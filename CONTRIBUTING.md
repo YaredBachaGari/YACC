@@ -1,11 +1,11 @@
-# Contributing to JSM HQ
+# Contributing to YACC
 
 ## Run it from source
 
 Needs Node.js 20+ and pnpm 10 or 11 (`corepack enable` gets you pnpm).
 
 ```bash
-git clone https://github.com/jsmastery-pro/jsm-hq && cd jsm-hq
+git clone https://github.com/YaredBachaGari/YACC && cd YACC
 pnpm install
 pnpm dev                                   # the UI with fake data, no agents
 HQ_REPO=~/developer/hq-test pnpm dev:hq    # the real HQ server + UI, with hot reload
@@ -33,7 +33,7 @@ src/
   office/    The PixiJS pixel office: layout, sprites, agents, belt
   ui/        Top bar, team panel, activity, drawers, settings, setup checklist, welcome
 server/      Local HQ server: setup checks, workspaces, sessions (tmux, or HQ-run on Windows), sbx, hooks, Team MCP, GitHub
-bin/         The jsm-hq command
+bin/         The yacc-hq command
 docs/        User guides
 context/     Implementation plans, and the first UI build brief (001-ui-build-context.md)
 ```
@@ -44,7 +44,16 @@ HQ calls the `sbx` CLI and reads its output. sbx 0.48 changed several outputs (f
 
 ## Releasing
 
-1. Bump `version` in `package.json` and merge to `main`.
-2. From a clean, up-to-date `main`, run `npm publish`. It builds first.
+YACC is not published to npm yet (`"private": true` in `package.json` blocks an accidental publish). Run it from source, or build a tarball with `npm pack` and install that.
 
-Only members of the `therealjsmastery` npm org can publish. The README on npm updates only when a new version is published.
+## Upstream
+
+YACC is a fork of [jsmastery-pro/jsm-hq](https://github.com/jsmastery-pro/jsm-hq). To bring in upstream engine fixes:
+
+```bash
+git remote add upstream https://github.com/jsmastery-pro/jsm-hq.git   # once
+git fetch upstream
+git merge upstream/main    # expect conflicts in renamed files; keep the YACC names
+```
+
+The fork point is upstream `1d0ecdb` (v0.7.5, 2026-11-09).

@@ -1,16 +1,10 @@
-# JSM HQ
+# YACC
 
-**Run a team of AI coding agents on your repo, and watch them work in a pixel-art office.**
+**A command center for teams of AI agents.** A lead agent plans the work, other agents carry it out in their own sandboxes, and you watch and steer from a live office view.
 
-[![npm](https://img.shields.io/npm/v/@therealjsmastery/jsm-hq?color=cb3837&label=npm)](https://www.npmjs.com/package/@therealjsmastery/jsm-hq)
-[![license](https://img.shields.io/npm/l/@therealjsmastery/jsm-hq)](LICENSE)
-[![node](https://img.shields.io/node/v/@therealjsmastery/jsm-hq)](https://nodejs.org)
+> **Status: Phase 0.** YACC is a fork of [JSM HQ](https://github.com/jsmastery-pro/jsm-hq) (see [NOTICE.md](NOTICE.md)). Today it behaves like upstream: a coding team of one lead and several workers on a git repo. The work to make roles, workflows, models and the office configurable for any purpose is planned in phases and has not landed yet.
 
-![The JSM HQ office: a lead and two developers at their desks, the task board on the wall, pull requests on the board and the review gate on the belt](docs/images/office.png)
-
-One **lead** agent plans the work and hands out tasks. Each **worker** gets its own desk, its own copy of your repo and its own Docker Sandbox, then opens a pull request. You see it all happen: the plan on the wall, agents at their desks, PRs moving through review.
-
-Agents run **Claude Code** or **Codex**. Everything runs on your machine.
+One **lead** agent plans the work and hands out tasks. Each **worker** gets its own desk, its own copy of your repo and its own Docker Sandbox, then opens a pull request. Agents run **Claude Code** or **Codex**. Everything runs on your machine.
 
 ## Why use it
 
@@ -22,10 +16,18 @@ Agents run **Claude Code** or **Codex**. Everything runs on your machine.
 
 ## Quick start
 
-From inside a git repo that has a GitHub remote:
+YACC is not on npm yet. Install it once from source (needs Node.js 20+ and pnpm):
 
 ```bash
-npx @therealjsmastery/jsm-hq@latest
+git clone https://github.com/YaredBachaGari/YACC && cd YACC
+pnpm install && pnpm build
+npm link            # makes the yacc-hq command available
+```
+
+Then, from inside a git repo that has a GitHub remote:
+
+```bash
+yacc-hq
 ```
 
 HQ opens in your browser and walks you through the rest:
@@ -34,26 +36,26 @@ HQ opens in your browser and walks you through the rest:
 2. **Setup checklist:** anything missing on your machine is listed with the command to fix it.
 3. **Start team** in the top bar, then message the lead, for example: *"Plan two small tasks for Dwight and assign the first one."*
 
-**First time?** The [getting-started guide](docs/getting-started.md) takes you from a fresh machine to a working team in about 15 minutes, on macOS, Linux and Windows.
+**First time?** The [getting-started guide](docs/getting-started.md) covers every tool HQ needs, on macOS, Linux and Windows.
 
 **Just trying it?** Use a throwaway repo:
 
 ```bash
 mkdir hq-test && cd hq-test
 git init -b main && echo "# HQ test" > README.md && git add . && git commit -m init
-npx @therealjsmastery/jsm-hq@latest
+yacc-hq
 ```
 
 ### Options
 
 ```
-jsm-hq --repo <path>   the repo to manage (default: current folder)
-       --port <n>      HQ port (default: 7420)
-       --no-open       don't open the browser
-       --version, --help
+yacc-hq --repo <path>   the repo to manage (default: current folder)
+        --port <n>      HQ port (default: 7420)
+        --no-open       don't open the browser
+        --version, --help
 ```
 
-Use it often? `npm install -g @therealjsmastery/jsm-hq`, then run `jsm-hq` in any repo.
+To update: `git pull`, then `pnpm install && pnpm build` in the YACC folder.
 
 ## Requirements
 
@@ -72,7 +74,6 @@ You don't need to install these by hand first. HQ checks for each one and shows 
 
 ## How it works
 
-![An agent's drawer: its live terminal, its sandbox, websites it tried to reach, and tabs for its task and messages](docs/images/agent-drawer.png)
 
 1. **You tell the lead what to build.** It creates a board of small tasks, each with the files it may touch, and assigns them.
 2. **Workers build in their own sandboxes.** Each one pulls `main`, makes a branch, writes the code and opens a PR titled `[TASK-ID] …`.
@@ -88,7 +89,7 @@ More detail on workspaces, sandboxes, MCP servers, app variables and what HQ sav
 
 | Problem | Fix |
 | --- | --- |
-| A setup check shows "!" but the tool works | You may be on an old HQ. Run `npx @therealjsmastery/jsm-hq@latest` (npx can keep an old version cached). |
+| A setup check shows "!" but the tool works | You may be on an old HQ. Update it: `git pull`, then `pnpm install && pnpm build` in the YACC folder. |
 | Start fails: "network policy has not been initialized" | A new Docker Sandboxes install needs a base policy once: `sbx policy init balanced`. |
 | Agents fail to start with a sign-in error | Your Docker sign-in expired. Run `sbx login`, then **Check again** in the setup checklist. |
 | Agents can't push or open PRs | Run `sbx secret set github --command "gh auth token"`, and check the repo has a GitHub `origin`. |
@@ -97,17 +98,17 @@ More detail on workspaces, sandboxes, MCP servers, app variables and what HQ sav
 | An agent's state never changes | The sandbox can't reach HQ. `sbx policy ls` should show `localhost:<port>` and `host.docker.internal:<port>` allowed; HQ adds them on start. |
 | "Port 7420 is in use" | Another HQ is running. Stop it, or use `--port 7421`. |
 | Windows: `listen EACCES` on start | Windows reserved that port. Use `--port 8420`. |
-| `posix_spawnp failed` when opening a terminal | Run `npx clear-npx-cache`, then `npx @therealjsmastery/jsm-hq@latest`. |
+| `posix_spawnp failed` when opening a terminal | Run `pnpm install` again in the YACC folder; its postinstall step repairs the terminal library. |
 
-**Remove a project:** delete each agent in Settings → Team (this removes its sandbox and, if you choose, its folder), then delete `~/.jsmhq/<project>`.
+**Remove a project:** delete each agent in Settings → Team (this removes its sandbox and, if you choose, its folder), then delete `~/.yacc/<project>`.
 
 ## Docs
 
 - [Getting started](docs/getting-started.md): install everything and run your first team.
 - [How it works](docs/how-it-works.md): workspaces, sandboxes, GitHub, MCP, settings and files.
-- [Contributing](CONTRIBUTING.md): run HQ from source and release it.
+- [Contributing](CONTRIBUTING.md): work on HQ itself and merge upstream fixes.
 - [Security](SECURITY.md): report a vulnerability privately.
 
 ## License
 
-Code: [MIT](LICENSE). The JSM HQ name and logo are not covered by the license; see [TRADEMARKS.md](TRADEMARKS.md).
+Code: [MIT](LICENSE). YACC is a fork of JSM HQ by JavaScript Mastery; see [NOTICE.md](NOTICE.md).
