@@ -1,0 +1,89 @@
+{
+  "name": "yacc-hq",
+  "version": "0.1.0",
+  "description": "A command center for teams of AI agents: sandboxed, configurable by template, and visible in a live office view.",
+  "license": "MIT",
+  "type": "module",
+  "homepage": "https://github.com/YaredBachaGari/YACC#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/YaredBachaGari/YACC.git"
+  },
+  "bugs": {
+    "url": "https://github.com/YaredBachaGari/YACC/issues"
+  },
+  "keywords": [
+    "ai",
+    "agents",
+    "ai-agents",
+    "multi-agent",
+    "agent-orchestration",
+    "coding-agents",
+    "claude",
+    "claude-code",
+    "codex",
+    "docker-sandboxes",
+    "mcp",
+    "developer-tools"
+  ],
+  "bin": {
+    "yacc-hq": "bin/yacc-hq.mjs"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "dist-server",
+    "scripts/fix-node-pty.mjs",
+    "LICENSE",
+    "SECURITY.md",
+    "README.md",
+    "NOTICE.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "vite",
+    "dev:hq": "concurrently -k -n hq,ui -c magenta,cyan \"tsx watch server/main.ts --dev\" \"vite\"",
+    "hq": "vite build --logLevel warn && tsx server/main.ts",
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p server",
+    "build": "tsc --noEmit -p . && tsc --noEmit -p server && vite build && node scripts/build-server.mjs",
+    "preview": "vite preview",
+    "prepack": "npm run build",
+    "postinstall": "node scripts/fix-node-pty.mjs"
+  },
+  "dependencies": {
+    "@fontsource/inter": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
+    "@lydell/node-pty": "1.2.0-beta.15",
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "@xterm/headless": "5.5.0",
+    "ws": "^8.22.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@fontsource/pixelify-sans": "^5.3.0",
+    "@fontsource/vt323": "^5.3.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^26.6.5",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "@types/ws": "^8.18.2",
+    "@vitejs/plugin-react": "^4.7.0",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/addon-web-links": "^0.11.0",
+    "@xterm/xterm": "^5.5.0",
+    "concurrently": "^10.0.6",
+    "esbuild": "^0.28.2",
+    "framer-motion": "^11.18.2",
+    "pixi.js": "^8.22.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.15",
+    "typescript": "~5.8.3",
+    "vite": "^6.4.4",
+    "zustand": "^5.0.15"
+  },
+  "private": true
+}

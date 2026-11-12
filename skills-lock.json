@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "skills": {
+    "architect": {
+      "source": "JavaScript-Mastery-Pro/jsm-skills-workflow",
+      "sourceType": "github",
+      "skillPath": "skills/architect/SKILL.md",
+      "computedHash": "12d91ca8f272d4ad53ee1146dd47468e51d2f831b9f9fd30ce6475bdc52d493d"
+    },
+    "audit": {
+      "source": "JavaScript-Mastery-Pro/jsm-skills-workflow",
+      "sourceType": "github",
+      "skillPath": "skills/audit/SKILL.md",
+      "computedHash": "7936a1fa61bf9ab426a2f5fc36317f81ddca509d9865d7e64897f53d044a9d01"
+    },
+    "debug": {
+      "source": "JavaScript-Mastery-Pro/jsm-skills-workflow",
+      "sourceType": "github",
+      "skillPath": "skills/debug/SKILL.md",
+      "computedHash": "252bed873e6d0ecd0332fad2c5def90cc1e6b94bf85b8d293ec921fdfae41d12"
+    },
+    "document": {
+      "source": "JavaScript-Mastery-Pro/jsm-skills-workflow",
+      "sourceType": "github",
+      "skillPath": "skills/document/SKILL.md",
+      "computedHash": "c9b81bad8fcb943028002524ea89f1858de88ed2e884549f95b3916035e74895"
+    },
+    "honest": {
+      "source": "JavaScript-Mastery-Pro/jsm-skills-workflow",
+      "sourceType": "github",
+      "skillPath": "skills/honest/SKILL.md",
+      "computedHash": "801bb5d84b1ae0ca355404054f21b0ba2ef79ebd3ce22aff5a64f507f4cb9fe2"
+    },
+    "mvp": {
+      "source": "JavaScript-Mastery-Pro/jsm-skills-workflow",
+      "sourceType": "github",
+      "skillPath": "skills/mvp/SKILL.md",
+      "computedHash": "48c9a48416b477d10389f21d1d081e5aa89b631fb00498c6873c8d4a92092b53"
+    },
+    "plan": {
+      "source": "JavaScript-Mastery-Pro/jsm-skills-workflow",
+      "sourceType": "github",
+      "skillPath": "skills/plan/SKILL.md",
+      "computedHash": "734ad3d8973f8c224f8ac614cfbe3c6a61272747b96bb0b31671bb92bf2d9a0b"
+    },
+    "remember": {
+      "source": "JavaScript-Mastery-Pro/jsm-skills-workflow",
+      "sourceType": "github",
+      "skillPath": "skills/remember/SKILL.md",
+      "computedHash": "045afc0b9f3c4b0081bc5524ec7f5f655281d1bdb750818cfd276e21a174f755"
+    },
+    "review": {
+      "source": "JavaScript-Mastery-Pro/jsm-skills-workflow",
+      "sourceType": "github",
+      "skillPath": "skills/review/SKILL.md",
+      "computedHash": "132110c53b747b7ce9c279bbbc166ea698a0069410ba99d939cbfe7c7b7e7a51"
+    },
+    "teach": {
+      "source": "JavaScript-Mastery-Pro/jsm-skills-workflow",
+      "sourceType": "github",
+      "skillPath": "skills/teach/SKILL.md",
+      "computedHash": "f43d56224acbc40d18651f51aa99f2d8ee291922ad195fc660c60cfb98ed32bf"
+    }
+  }
+}

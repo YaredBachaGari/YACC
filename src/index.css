@@ -1,0 +1,199 @@
+@import "tailwindcss";
+@import "@fontsource/pixelify-sans/400.css";
+@import "@fontsource/pixelify-sans/600.css";
+@import "@fontsource/pixelify-sans/700.css";
+@import "@fontsource/vt323/400.css";
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/inter/700.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+@import "@fontsource/jetbrains-mono/700.css";
+@import "@xterm/xterm/css/xterm.css";
+
+@theme {
+  --color-ink: #241a2e;
+  --color-cream: #fff6e9;
+  --color-cream-2: #f0dfc2;
+  --color-cream-3: #e2cba6;
+  --color-muted: #7d6b73;
+  --color-navy: #1d2b53;
+  --color-navy-2: #16213f;
+  --color-blue: #29adff;
+  --color-red: #ff004d;
+  --color-orange: #ffa300;
+  --color-green: #00e436;
+  --color-lav: #83769c;
+  --color-yellow: #ffec27;
+  --color-pink: #ff77a8;
+  --color-grass: #4a8f3d;
+  --font-ui: "Pixelify Sans", "Trebuchet MS", system-ui, sans-serif;
+  --font-term: "VT323", ui-monospace, Menlo, Consolas, monospace;
+}
+
+/* Font styles (Settings → Project → Font). The office canvas and terminal keep their pixel fonts. */
+html[data-font="clean"] {
+  --font-ui: "Inter", system-ui, sans-serif;
+  --font-term: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+html[data-font="mono"] {
+  --font-ui: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --font-term: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+/* VT323 is small for its size; keep data text the same visual size in the other fonts. */
+html[data-font] .font-term {
+  font-size-adjust: 0.42;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+  }
+
+  body {
+    background: var(--color-grass);
+    color: var(--color-ink);
+    font-family: var(--font-ui);
+    min-width: 1280px;
+  }
+
+  button {
+    font: inherit;
+    color: inherit;
+  }
+}
+
+@layer components {
+  /* Chunky game panel: ink outline, light bevel, hard drop shadow (no blur) */
+  .panel {
+    background: var(--color-cream);
+    border: 3px solid var(--color-ink);
+    box-shadow:
+      inset -3px -3px 0 var(--color-cream-2),
+      inset 3px 3px 0 #fff,
+      0 4px 0 rgba(36, 26, 46, 0.45);
+  }
+  .panel-dark {
+    background: rgba(29, 43, 83, 0.94);
+    color: var(--color-cream);
+    border: 3px solid var(--color-ink);
+    box-shadow:
+      inset -3px -3px 0 rgba(0, 0, 0, 0.25),
+      inset 3px 3px 0 rgba(255, 255, 255, 0.08),
+      0 4px 0 rgba(36, 26, 46, 0.45);
+  }
+  .btn {
+    cursor: pointer;
+    border: 3px solid var(--color-ink);
+    background: var(--color-cream);
+    padding: 1px 10px;
+    font-weight: 600;
+    box-shadow:
+      inset -2px -2px 0 var(--color-cream-3),
+      0 3px 0 var(--color-ink);
+    transition: transform 0.06s;
+    white-space: nowrap;
+  }
+  .btn:hover {
+    background: #fff;
+  }
+  .btn:active,
+  .btn[aria-pressed="true"] {
+    transform: translateY(3px);
+    box-shadow:
+      inset -2px -2px 0 var(--color-cream-3),
+      0 0 0 var(--color-ink);
+  }
+  .btn[aria-pressed="true"] {
+    background: var(--color-yellow);
+  }
+  .btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+    transform: none;
+  }
+  .btn:focus-visible,
+  .field:focus-visible {
+    outline: 3px solid var(--color-blue);
+    outline-offset: 1px;
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 0 6px 1px;
+    border: 2px solid var(--color-ink);
+    background: var(--c, var(--color-cream-2));
+    color: var(--color-ink);
+    white-space: nowrap;
+  }
+  .chip-dot::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    background: var(--color-ink);
+  }
+  .field {
+    border: 3px solid var(--color-ink);
+    background: #fff;
+    padding: 2px 8px;
+    font-size: 15px;
+    width: 100%;
+    min-width: 0;
+  }
+  /* Inputs and dropdowns share one height so labels in a row line up. */
+  input.field,
+  select.field {
+    height: 2.25rem;
+  }
+  .kbd {
+    font-family: var(--font-term);
+    font-size: 16px;
+    border: 2px solid var(--color-ink);
+    padding: 0 4px;
+    background: #fff;
+  }
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+.blink {
+  animation: blink 0.5s steps(1) infinite;
+}
+.led {
+  width: 8px;
+  height: 8px;
+  background: var(--color-green);
+  box-shadow: 0 0 0 2px var(--color-ink);
+  animation: blink 1s steps(1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .blink,
+  .led {
+    animation: none;
+  }
+}
+
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: #3b4a7a transparent;
+}
+
+.xterm {
+  padding: 8px 10px;
+}
+.xterm .xterm-viewport {
+  scrollbar-width: thin;
+  scrollbar-color: #3b4a7a transparent;
+}
