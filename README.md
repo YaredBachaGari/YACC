@@ -2,9 +2,11 @@
 
 **A command center for teams of AI agents.** A lead agent plans the work, other agents carry it out in their own sandboxes, and you watch and steer from a live office view.
 
-> **Status: Phase 0.** YACC is a fork of [JSM HQ](https://github.com/jsmastery-pro/jsm-hq) (see [NOTICE.md](NOTICE.md)). Today it behaves like upstream: a coding team of one lead and several workers on a git repo. The work to make roles, workflows, models and the office configurable for any purpose is planned in phases and has not landed yet.
+> **Status: Phase 1.** YACC is a fork of [JSM HQ](https://github.com/jsmastery-pro/jsm-hq) (see [NOTICE.md](NOTICE.md)). Roles, permissions, reporting lines and hiring are now settings, saved as YAML. The workflow is still the coding one (tasks, pull requests, GitHub); custom stages, templates, more models and the new office come in later phases.
 
-One **lead** agent plans the work and hands out tasks. Each **worker** gets its own desk, its own copy of your repo and its own Docker Sandbox, then opens a pull request. Agents run **Claude Code** or **Codex**. Everything runs on your machine.
+You are the **CEO**. One **lead** agent takes your instructions, plans the work, assigns it, reviews it and reports back. Every other agent has a **role** you define: what it may do and how it should work. The lead can hire more agents when the work needs it, up to a headcount limit you set. Each agent gets its own desk, its own copy of your repo and its own Docker Sandbox. Agents run **Claude Code** or **Codex**. Everything runs on your machine.
+
+Settings live in `.yacc/config.yml` and `.yacc/roles/`: edit them in the app or by hand. See [How it works](docs/how-it-works.md#roles-the-org-and-settings-files).
 
 ## Why use it
 

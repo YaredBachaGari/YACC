@@ -5,11 +5,13 @@ import { ProjectSettings } from "./ProjectSettings";
 import { SandboxSettingsTab } from "./SandboxSettings";
 import { StackSettings } from "./StackSettings";
 import { McpSettings } from "./McpSettings";
+import { RolesSettings } from "./RolesSettings";
 import { TeamSettings } from "./TeamSettings";
 import { WorkflowSettings } from "./WorkflowSettings";
 
 const TABS: { id: SettingsTab; label: string; hint: string }[] = [
-  { id: "team", label: "Team", hint: "Agents, roles, skills" },
+  { id: "team", label: "Team", hint: "CEO, agents, reporting" },
+  { id: "roles", label: "Roles", hint: "Permissions, instructions" },
   { id: "workflow", label: "Workflow", hint: "Review, merge, deploy" },
   { id: "stack", label: "Stack", hint: "Frameworks, tools" },
   { id: "mcp", label: "MCP", hint: "Servers for agents" },
@@ -60,6 +62,7 @@ export function SettingsModal() {
           </nav>
           <div className="scroll-thin min-w-0 flex-1 overflow-y-auto p-5">
             {settings.tab === "team" && <TeamSettings />}
+            {settings.tab === "roles" && <RolesSettings />}
             {settings.tab === "workflow" && <WorkflowSettings />}
             {settings.tab === "stack" && <StackSettings />}
             {settings.tab === "mcp" && <McpSettings />}

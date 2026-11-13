@@ -15,6 +15,7 @@ import type { Hub } from "./hub";
 import type { Inbox } from "./inbox";
 import { handleMcp } from "./mcp";
 import type { Planner } from "./planner";
+import type { Team } from "./team";
 import { log } from "./lib/log";
 
 const MIME: Record<string, string> = {
@@ -46,6 +47,7 @@ interface Options {
   hub: Hub;
   inbox: Inbox;
   planner: Planner;
+  team: Team;
   port: number;
   browserToken: string;
   agentToken: string;
@@ -87,7 +89,7 @@ export function startHttp(o: Options) {
       if (req.method === "GET" || req.method === "DELETE") return send(res, 405, "stateless server");
       try {
         const raw = await readBody(req, 1024 * 1024);
-        return await handleMcp(o.hub, o.planner, agentId, req, res, raw ? JSON.parse(raw) : undefined);
+        return await handleMcp(o.hub, o.planner, o.team, agentId, req, res, raw ? JSON.parse(raw) : undefined);
       } catch {
         return res.headersSent ? void res.end() : send(res, 400, "bad request");
       }

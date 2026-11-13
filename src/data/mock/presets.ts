@@ -1,9 +1,27 @@
-import type { AgentConfig, Board, HqConfig, SandboxSettings, Task } from "../types";
+import { CEO_ID, LEAD_ROLE_ID, type AgentConfig, type Board, type HqConfig, type SandboxSettings, type Task } from "../types";
+import { DEFAULT_CEO_NAME, DEFAULT_MAX_AGENTS, DEVELOPER_INSTRUCTIONS, leadRole, normalizeConfig, roleSlug } from "../roles";
+
+/** A preset's settings, before the org parts every config has are filled in. */
+export type PresetConfig = Omit<HqConfig, "ceo" | "limits" | "roles">;
+
+/** Adds the CEO, the headcount limit and one role per job title to a preset. */
+export function completeConfig(preset: PresetConfig): HqConfig {
+  const titles = new Map<string, string>();
+  for (const a of preset.team) if (a.roleId !== LEAD_ROLE_ID) titles.set(a.roleId, a.role);
+  const cfg: HqConfig = {
+    ...preset,
+    ceo: { name: DEFAULT_CEO_NAME },
+    limits: { maxAgents: Math.max(DEFAULT_MAX_AGENTS, preset.team.length) },
+    roles: [leadRole(), ...[...titles].map(([id, title]) => ({ id, title, can: ["work" as const], instructions: DEVELOPER_INSTRUCTIONS }))],
+  };
+  normalizeConfig(cfg);
+  return cfg;
+}
 
 export interface Preset {
   id: string;
   label: string;
-  config: HqConfig;
+  config: PresetConfig;
   boards: Board[];
   tasks: Task[];
   /** PRs already merged before the session starts (numbered 1..n). */
@@ -32,6 +50,9 @@ function agent(
   return {
     id,
     name,
+    // normalizeConfig (below) points everyone but the lead at the lead.
+    roleId: isLead ? LEAD_ROLE_ID : roleSlug(role),
+    reportsTo: CEO_ID,
     role,
     isLead,
     cli: "claude",
@@ -39,9 +60,7 @@ function agent(
     mode: "sandbox",
     color,
     skills: isLead ? ["plan", "review", "honest"] : ["plan", "debug", "review"],
-    roleMd: isLead
-      ? `# ${name} — Lead\n\nYou plan and assign work. You never write app code.\nUse the HQ Team MCP: list_workers, get_status, assign_task, send_message.`
-      : `# ${name} — ${role}\n\nYou build the tasks assigned to you. One task = one branch = one PR.\nOnly edit the files your task file allows.`,
+    roleMd: "",
     sandbox: sandbox(isLead ? {} : { allow: ["registry.npmjs.org", "console.instacloud.com"] }),
     workspacePath: null,
     ...opts,

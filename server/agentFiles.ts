@@ -6,7 +6,8 @@ import { agentRead, agentRemove, agentWrite } from "./lib/agentFs";
 import { run } from "./lib/exec";
 import { join } from "node:path";
 import { stackRoleMd } from "../src/data/stack";
-import type { AgentConfig, HqConfig } from "../src/data/types";
+import { CEO_ID, type AgentConfig, type HqConfig } from "../src/data/types";
+import { can, managerName, roleOf, toolsFor } from "../src/data/roles";
 
 /** Team MCP config, passed with `claude --mcp-config` (so the project's own .mcp.json is untouched). */
 export const MCP_CONFIG = ".claude/hq-mcp.json";
@@ -102,46 +103,57 @@ export function hqUrl(agent: AgentConfig, port: number): string {
   return agent.mode === "sandbox" ? `http://host.docker.internal:${port}` : `http://127.0.0.1:${port}`;
 }
 
+/**
+ * The role file an agent reads at session start. HQ only assembles it: what the role does comes
+ * from the role's instructions (.yacc/roles/<id>.md), the agent's own note, and the settings.
+ * The rules added here are the ones that hold for any team: how to reach the CEO and how HQ works.
+ */
 export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {}): string {
-  const team = cfg.team.map((a) => `- ${a.name} — ${a.role}${a.isLead ? " (lead)" : ""}${a.id === agent.id ? " ← you" : ""}`).join("\n");
-  const rules = agent.isLead
-    ? [
-        "You plan the work and assign it to the team. You never write app code.",
-        "Keep tasks small: one task = one branch = one PR. Give each task the files it may edit and a clear done-when.",
-        "Assign only to agents that are running and free (check list_workers).",
-        cfg.workflow.merge.by === "lead"
-          ? "You merge PRs once they pass review (`gh pr merge <number> --squash --delete-branch`), one at a time, in an order that avoids conflicts. HQ tells you when each one passes."
-          : "The user merges PRs; never merge one yourself. Decide the order they should land in, and tell the user if one blocks another.",
-        "If the user changes who merges, HQ tells you. Follow the latest message.",
-      ]
-    : [
-        "Work only on the task you were given. One task = one branch = one PR.",
-        "When HQ tells you to start a task, call get_my_task first, then `git pull origin main` and create a branch.",
-        "Edit only the files the task lists. Need another file? Ask the lead with send_message.",
-        "Title PRs `[TASK-ID] Short title` and open them with `gh pr create`, then call set_my_status in-review with the PR number.",
-        "set_my_status tells the lead automatically. Don't also send_message the same news.",
-        "If you are blocked or need a decision, call set_my_status blocked with the reason.",
-      ];
+  const role = roleOf(cfg, agent);
+  const title = role?.title ?? agent.role;
+  const ceo = cfg.ceo.name;
+  const team = [
+    `- ${ceo} — CEO (the human). Everyone can ask the CEO directly with ask_user.`,
+    ...cfg.team.map((a) => `- ${a.name} — ${a.role}${a.isLead ? " (lead)" : ""}${a.temporary ? ", temporary" : ""}; reports to ${managerName(cfg, a)}${a.id === agent.id ? " ← you" : ""}`),
+  ].join("\n");
+  const rules: string[] = [];
+  // Who merges is a workflow setting, so it can't live in the lead's instructions file.
+  if (agent.isLead && cfg.project.repo.includes("/"))
+    rules.push(
+      cfg.workflow.merge.by === "lead"
+        ? "You merge PRs once they pass review (`gh pr merge <number> --squash --delete-branch`), one at a time, in an order that avoids conflicts. HQ tells you when each one passes."
+        : "The user merges PRs; never merge one yourself. Decide the order they should land in, and tell the user if one blocks another.",
+      "If the user changes who merges, HQ tells you. Follow the latest message.",
+    );
+  if (can(cfg, agent, "assign")) rules.push("Assign only to agents that are running and free (check list_workers).");
+  // How tasks arrive and are reported is the same for every role; a role that already spells it out isn't told twice.
+  if (can(cfg, agent, "work") && !/get_my_task/.test(role?.instructions ?? ""))
+    rules.push(
+      "When HQ tells you to start a task, call get_my_task first. Work only on that task.",
+      "Report with set_my_status: in-review when your output is ready to be checked, blocked (with the reason) when you can't continue, done when it is finished. The lead is told automatically.",
+    );
   rules.push(
-    "When you need the user to do something outside your sandbox (create an account, database or API key, change a setting in a dashboard, put a value in your env file), call ask_user with a short title and clear steps, then keep working on what you can. Never put secret values in it; name the variable instead. Variables reach you through HQ: ask the user to add NAME to your App variables in HQ (Settings → Sandbox → App variables) and restart you; there is no env file inside your sandbox to edit.",
+    "You can message any teammate with send_message, whatever the reporting lines.",
+    "When you need the CEO to approve or decide something, or to do something outside your sandbox (create an account, database or API key, change a setting in a dashboard, put a value in your env file), call ask_user with a short title and clear steps, then keep working on what you can. You don't need to go through the lead for this. Never put secret values in it; name the variable instead. Variables reach you through HQ: ask the user to add NAME to your App variables in HQ (Settings → Sandbox → App variables) and restart you; there is no env file inside your sandbox to edit.",
   );
   // Sandboxes block most sites; the agent asks instead of working around it.
   if (agent.mode === "sandbox")
     rules.push(
       "Your sandbox blocks most websites and APIs. If a request you need is blocked (a docs page or an API: usually a 403 saying 'Approval required for <host>'), call request_access with the domain and why, then continue with other work until HQ tells you it was answered. Never work around the block.",
     );
-  const tools = agent.isLead
-    ? "list_workers, get_status, list_tasks, create_board, create_task, update_task, assign_task, send_message, ask_user, request_access"
-    : "get_my_task, set_my_status, list_workers, get_status, list_tasks, send_message, ask_user, request_access";
+  const limits = can(cfg, agent, "hire") ? [`Headcount limit set by the CEO: ${cfg.limits.maxAgents} agents (the team has ${cfg.team.length}).`, ""] : [];
   return [
-    `# ${agent.name} — ${agent.role}`,
+    `# ${agent.name} — ${title}`,
     "",
-    agent.roleMd.trim(),
+    `You are ${agent.name}, ${agent.isLead ? "the lead" : `${/^[aeiou]/i.test(title) ? "an" : "a"} ${title}`} on the ${cfg.project.name} team. You report to ${managerName(cfg, agent)}${agent.reportsTo === CEO_ID ? ", the CEO (the human)" : ""}.`,
     "",
+    ...(role?.instructions.trim() ? [`## Your role: ${title}`, role.instructions.trim(), ""] : []),
+    ...(agent.roleMd.trim() ? ["## Notes for you", agent.roleMd.trim(), ""] : []),
     "## Team",
     team,
     "",
-    "## Rules",
+    ...limits,
+    "## How HQ works",
     ...rules.map((r) => `- ${r}`),
     "",
     ...(stackRoleMd(cfg.stack) ? [stackRoleMd(cfg.stack), ""] : []),
@@ -154,7 +166,7 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
       : []),
     ...(extras.ownRole?.trim() ? ["## From ROLE.md in this folder", extras.ownRole.trim(), ""] : []),
     "## Team MCP (server `hq`)",
-    `Your tools: ${tools}.`,
+    `Your tools: ${toolsFor(role).join(", ")}.`,
     "Messages that start with `[HQ]` come from YACC: assignments from the lead, or messages from teammates. Act on them.",
     "Teammates work in their own sandboxes and cannot see your files or terminal. Talk to them only with send_message.",
     "",

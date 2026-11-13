@@ -13,6 +13,9 @@ import type {
   Environment,
   HqConfig,
   NewAgentInput,
+  NewRoleInput,
+  OrgPatch,
+  RolePatch,
   OfficeSnapshot,
   SbxState,
   RemoveAgentOptions,
@@ -126,6 +129,13 @@ export interface OfficeDataSource {
   answerApproval(agentId: string, approvalId: string, decision: "allow" | "dismiss"): void;
   /** Re-reads policy rules, keys and proxy from sbx. */
   refreshSbx(): void;
+  // roles and org (saved to .yacc/config.yml and .yacc/roles/<id>.md)
+  addRole(input: NewRoleInput): void;
+  updateRole(id: string, patch: RolePatch): void;
+  /** Ignored for the lead role and for roles an agent still has. */
+  removeRole(id: string): void;
+  /** The CEO's name and the headcount limit. */
+  updateOrg(patch: OrgPatch): void;
   updateWorkflow(patch: WorkflowPatch): void;
   updateProject(patch: Partial<ProjectConfig>): void;
   createBoard(title: string): void;

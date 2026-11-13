@@ -24,6 +24,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      - name: Roles, YAML settings and hiring
+        run: npx tsx scripts/roles-test.ts
       - name: Session backends (fake agent)
         run: npx tsx scripts/session-backend-test.ts
       - name: Agent clones (line endings)

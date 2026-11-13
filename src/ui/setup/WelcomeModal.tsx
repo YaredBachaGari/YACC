@@ -5,7 +5,10 @@ import type { AgentCli, ReviewTool } from "../../data/types";
 import { officeActions, reviewToolLabel, useOffice } from "../../store/office";
 import { agentPalette } from "../../theme/tokens";
 import { Field, Portrait } from "../kit";
-import { CliSelect, ROLE_SUGGESTIONS } from "../settings/TeamSettings";
+import { CliSelect } from "../settings/TeamSettings";
+
+/** Job titles offered for a worker. Each becomes a role you can edit under Settings → Roles. */
+const ROLE_SUGGESTIONS = ["Developer", "QA", "Designer", "Docs", "DevOps", "Security"];
 
 interface WorkerDraft {
   name: string;
@@ -31,7 +34,7 @@ export function WelcomeModal() {
   const setWorker = (i: number, patch: Partial<WorkerDraft>) => setWorkers((ws) => ws.map((w, j) => (j === i ? { ...w, ...patch } : w)));
   const addWorker = () =>
     setWorkers((ws) => [...ws, { name: nextAgentName([lead.name, ...ws.map((w) => w.name)]), role: "Developer", cli: "claude" }]);
-  const valid = lead.name.trim() && workers.length > 0 && workers.every((w) => w.name.trim());
+  const valid = lead.name.trim() && workers.every((w) => w.name.trim());
 
   const submit = () => {
     if (!valid) return;
@@ -57,7 +60,7 @@ export function WelcomeModal() {
 
           <section>
             <h3 className="mb-1 text-[16px] font-bold">Lead</h3>
-            <p className="mb-2 text-[13px] text-muted">Plans the work, creates tasks and assigns them to workers.</p>
+            <p className="mb-2 text-[13px] text-muted">Takes your instructions, plans the work, assigns it, reviews it and reports back to you. Every team has one.</p>
             <div className="grid grid-cols-[40px_1fr_150px] items-end gap-2">
               <Portrait color={agentPalette[0]} lead />
               <Field label="Name">
@@ -71,7 +74,7 @@ export function WelcomeModal() {
 
           <section>
             <h3 className="mb-1 text-[16px] font-bold">Workers · {workers.length}</h3>
-            <p className="mb-2 text-[13px] text-muted">Each worker gets its own desk, copy of the repo and sandbox.</p>
+            <p className="mb-2 text-[13px] text-muted">Optional. Each worker gets its own desk, copy of the repo and sandbox. With none, the lead hires who it needs, up to your headcount limit.</p>
             <datalist id="welcome-roles">
               {ROLE_SUGGESTIONS.map((r) => (
                 <option key={r} value={r} />
@@ -92,7 +95,6 @@ export function WelcomeModal() {
                   </Field>
                   <button
                     className="btn px-2 text-[13px]"
-                    disabled={workers.length === 1}
                     aria-label={`Remove ${w.name || "worker"}`}
                     onClick={() => setWorkers((ws) => ws.filter((_, j) => j !== i))}
                   >
@@ -127,7 +129,7 @@ export function WelcomeModal() {
         </div>
 
         <div className="flex items-center justify-between gap-3 border-t-[3px] border-ink px-4 py-2">
-          <span className="text-[12px] text-muted">Saved to .yacc/config.json in your repo. Agents don't start until you press Start.</span>
+          <span className="text-[12px] text-muted">Saved to .yacc/config.yml in your repo. Agents don't start until you press Start.</span>
           <button className="btn" disabled={!valid || sending} onClick={submit}>
             {sending ? "Creating…" : "Create team"}
           </button>
