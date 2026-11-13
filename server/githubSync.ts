@@ -6,6 +6,7 @@ import { branchAgent, fetchPrs, OPEN_LIMIT, RateLimited, taskIdOf, toPullRequest
 import type { Hub } from "./hub";
 import { log } from "./lib/log";
 import type { Planner } from "./planner";
+import { leadOf } from "../src/data/roles";
 
 const MERGE_CMD = (n: number | string) => `gh pr merge ${n} --squash --delete-branch`;
 
@@ -164,7 +165,7 @@ export class GitHubSync {
     const hub = this.hub;
     const who = pr.authorId || null;
     const tool = label[hub.snap.config.workflow.review.tool];
-    const lead = hub.snap.config.team.find((a) => a.isLead);
+    const lead = leadOf(hub.snap.config);
     const ref = `#${pr.number} ${pr.title}`;
 
     if (!old && !pr.merged && !pr.closed) hub.activity("pr.opened", who, `${hub.name(who)} opened PR ${ref}`);

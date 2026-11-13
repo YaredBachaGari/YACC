@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { nextAgentName } from "../../data/names";
-import { CLI_LABEL, type AgentCli, type AgentConfig, type AgentMode } from "../../data/types";
+import { MAX_AGENTS_CEILING } from "../../data/roles";
+import { CEO_ID, CLI_LABEL, LEAD_ROLE_ID, type AgentCli, type AgentConfig, type AgentMode } from "../../data/types";
 import { officeActions, useOffice } from "../../store/office";
 import { agentPalette } from "../../theme/tokens";
 import { Field, Portrait, SectionTitle } from "../kit";
@@ -18,19 +19,41 @@ export function CliSelect({ value, onChange }: { value: AgentCli; onChange: (v: 
     </select>
   );
 }
-export const ROLE_SUGGESTIONS = ["Developer", "QA", "Designer", "Docs", "DevOps", "Security"];
 
 export function TeamSettings() {
   const team = useOffice((s) => s.snap?.config.team);
+  const ceo = useOffice((s) => s.snap?.config.ceo);
+  const limits = useOffice((s) => s.snap?.config.limits);
   const [open, setOpen] = useState<string | null>(null);
   const [removing, setRemoving] = useState<AgentConfig | null>(null);
-  if (!team) return null;
+  if (!team || !ceo || !limits) return null;
   return (
     <div className="flex flex-col gap-5">
       <section>
-        <SectionTitle>Team · {team.length} agents</SectionTitle>
+        <SectionTitle>You, the CEO</SectionTitle>
         <p className="mb-3 text-[14px] text-muted">
-          Changes to model, mode or folder apply the next time the agent starts. One lead plans and assigns work. Every other agent gets its own desk, sandbox and (optionally) environment. The office grows as you add agents.
+          You head the team. You brief the lead, and the lead reports back to you. Any agent can ask you directly for an approval, a decision or access.
+        </p>
+        <div className="grid grid-cols-[1fr_220px] items-start gap-2.5">
+          <Field label="Your name" hint="How agents refer to you.">
+            <CommitInput className="field" value={ceo.name} maxLength={40} onCommit={(v) => v.trim() && officeActions.updateOrg({ ceoName: v.trim() })} />
+          </Field>
+          <Field label="Headcount limit" hint={`Most agents on the team, lead included (up to ${MAX_AGENTS_CEILING}). The lead can hire without asking you, but never past this.`}>
+            <CommitInput
+              className="field"
+              type="number"
+              value={String(limits.maxAgents)}
+              onCommit={(v) => Number.isFinite(Number(v)) && officeActions.updateOrg({ maxAgents: Number(v) })}
+            />
+          </Field>
+        </div>
+      </section>
+      <section>
+        <SectionTitle>
+          Team · {team.length} of {limits.maxAgents} agents
+        </SectionTitle>
+        <p className="mb-3 text-[14px] text-muted">
+          Changes to role, model, mode or folder apply the next time the agent starts. One lead plans and assigns work. Every other agent gets its own desk and sandbox. What each role may do is under Roles.
         </p>
         <div className="flex flex-col gap-2">
           {team.map((a) => (
@@ -46,6 +69,10 @@ export function TeamSettings() {
 
 function AgentRow({ agent, expanded, onToggle, onRemove }: { agent: AgentConfig; expanded: boolean; onToggle: () => void; onRemove: () => void }) {
   const set = (patch: Parameters<typeof officeActions.updateAgent>[1]) => officeActions.updateAgent(agent.id, patch);
+  const roles = useOffice((s) => s.snap?.config.roles) ?? [];
+  const team = useOffice((s) => s.snap?.config.team) ?? [];
+  const ceoName = useOffice((s) => s.snap?.config.ceo.name) ?? "CEO";
+  const hirer = agent.hiredBy ? team.find((a) => a.id === agent.hiredBy)?.name : null;
   return (
     <div className="border-[3px] border-ink bg-white">
       <div className="grid grid-cols-[40px_1fr_1fr_150px_130px_auto] items-end gap-2.5 p-2.5">
@@ -55,9 +82,17 @@ function AgentRow({ agent, expanded, onToggle, onRemove }: { agent: AgentConfig;
         </Field>
         <Field label="Role">
           {agent.isLead ? (
-            <div className="field flex h-9 items-center bg-cream-2">Lead</div>
+            <div className="field flex h-9 items-center bg-cream-2">{agent.role}</div>
           ) : (
-            <CommitInput className="field" value={agent.role} list="role-suggestions" onCommit={(v) => v.trim() && set({ role: v.trim() })} />
+            <select className="field" value={agent.roleId} onChange={(e) => set({ roleId: e.target.value })} aria-label={`${agent.name}'s role`}>
+              {roles
+                .filter((r) => r.id !== LEAD_ROLE_ID)
+                .map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.title}
+                  </option>
+                ))}
+            </select>
           )}
         </Field>
         <Field label="Agent">
@@ -83,6 +118,12 @@ function AgentRow({ agent, expanded, onToggle, onRemove }: { agent: AgentConfig;
           )}
         </div>
       </div>
+      {hirer && (
+        <div className="border-t-2 border-dashed border-cream-3 px-3 py-1 text-[12px] text-muted">
+          Hired by {hirer}
+          {agent.temporary ? " for one piece of work (temporary). The lead dismisses them when it is done." : "."}
+        </div>
+      )}
       {agent.mode === "local" && (
         <div className="border-t-2 border-dashed border-cream-3 px-3 py-1 text-[12px] text-muted">
           Local mode runs plain <code>{agent.cli}</code> in the agent's own folder. Permission prompts stay on.
@@ -90,6 +131,22 @@ function AgentRow({ agent, expanded, onToggle, onRemove }: { agent: AgentConfig;
       )}
       {expanded && (
         <div className="grid grid-cols-2 gap-3 border-t-[3px] border-ink bg-cream p-3">
+          <Field label="Reports to" hint="Who this agent answers to. Everyone can still message everyone.">
+            {agent.isLead ? (
+              <div className="field flex h-9 items-center bg-cream-2">{ceoName} (CEO)</div>
+            ) : (
+              <select className="field" value={agent.reportsTo} onChange={(e) => set({ reportsTo: e.target.value })} aria-label={`Who ${agent.name} reports to`}>
+                <option value={CEO_ID}>{ceoName} (CEO)</option>
+                {team
+                  .filter((a) => a.id !== agent.id)
+                  .map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name} ({a.role})
+                    </option>
+                  ))}
+              </select>
+            )}
+          </Field>
           <Field label="Colour">
             <div className="flex flex-wrap gap-1.5">
               {agentPalette.map((c) => (
@@ -130,7 +187,7 @@ function AgentRow({ agent, expanded, onToggle, onRemove }: { agent: AgentConfig;
             </Field>
           </div>
           <div className="col-span-2">
-            <Field label="ROLE.md" hint="Who this agent is. HQ adds the team, rules and tools, writes it to .yacc-role.md in the agent's folder (never committed) and loads it when the session starts. A ROLE.md the folder already has is included too, never overwritten.">
+            <Field label="Notes for this agent" hint="Optional, for this agent only. What the role does is under Roles. HQ puts the role's instructions, these notes, the team and the tools into .yacc-role.md in the agent's folder (never committed) and loads it when the session starts. A ROLE.md the folder already has is included too, never overwritten.">
               <CommitInput multiline className="field h-[120px] resize-y font-term text-[17px] leading-tight" value={agent.roleMd} onCommit={(v) => set({ roleMd: v })} />
             </Field>
           </div>
@@ -142,7 +199,9 @@ function AgentRow({ agent, expanded, onToggle, onRemove }: { agent: AgentConfig;
 
 function AddAgent() {
   const [name, setName] = useState("");
-  const [role, setRole] = useState("Developer");
+  const roles = (useOffice((s) => s.snap?.config.roles) ?? []).filter((r) => r.id !== LEAD_ROLE_ID);
+  const limit = useOffice((s) => s.snap?.config.limits.maxAgents) ?? MAX_AGENTS_CEILING;
+  const [role, setRole] = useState(roles[0]?.title ?? "Developer");
   const [cli, setCli] = useState<AgentCli>("claude");
   const [mode, setMode] = useState<AgentMode>("sandbox");
   const team = useOffice((s) => s.snap?.config.team) ?? [];
@@ -164,7 +223,7 @@ function AddAgent() {
         <Field label="Name">
           <input className="field" value={name} onChange={(e) => setName(e.target.value)} placeholder={suggested} />
         </Field>
-        <Field label="Role">
+        <Field label="Role" hint="Pick a role, or type a new title to create one.">
           <input className="field" value={role} list="role-suggestions" onChange={(e) => setRole(e.target.value)} />
         </Field>
         <Field label="Agent">
@@ -182,6 +241,7 @@ function AddAgent() {
       </form>
       <p className="mt-2 text-[12px] text-muted">
         HQ starts a new sandbox with the lead's network policy and allows it to reach HQ at host.docker.internal.
+        {team.length >= limit && ` You are at your headcount limit of ${limit}: you can still add agents yourself, but the lead can't hire.`}
       </p>
       <datalist id="codex-models">
         <option value="gpt-5.6-sol" />
@@ -192,8 +252,8 @@ function AddAgent() {
         <option value="haiku" />
       </datalist>
       <datalist id="role-suggestions">
-        {ROLE_SUGGESTIONS.map((r) => (
-          <option key={r} value={r} />
+        {roles.map((r) => (
+          <option key={r.id} value={r.title} />
         ))}
       </datalist>
     </section>

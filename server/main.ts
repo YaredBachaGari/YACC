@@ -23,7 +23,8 @@ import { agentToken, browserToken } from "./paths";
 import { detectRepo } from "./repo";
 import { Sessions } from "./sessions";
 import { runSetupChecks } from "./setup";
-import { loadConfig, loadPlan } from "./store";
+import { ConfigError, loadConfig, loadPlan, watchConfig } from "./store";
+import { Team } from "./team";
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -36,7 +37,7 @@ async function main() {
   const dev = flag("dev");
   const port = Number(arg("port") ?? process.env.HQ_PORT ?? 7420);
   const repo = await detectRepo(resolve(arg("repo") ?? process.env.HQ_REPO ?? process.cwd()));
-  const { config, isNew } = loadConfig(repo, port);
+  const { config, isNew, notes } = loadConfig(repo, port);
   config.project.hqPort = port;
   const slug = config.project.id;
   const token = agentToken(slug);
@@ -49,6 +50,7 @@ async function main() {
 
   const hub = new Hub(repo, slug, config, loadPlan(repo.root), setup);
   hub.snap.welcome = isNew;
+  for (const n of notes) hub.activity("config", null, n);
   const sessions = new Sessions(hub, token);
   const inbox = new Inbox(hub, { type: (id, text) => sessions.typeInto(id, text), enter: (id) => sessions.pressEnter(id) });
   sessions.onSessionDown = (id) => inbox.sessionDown(id);
@@ -74,6 +76,15 @@ async function main() {
   void mcp.refresh();
   const planner = new Planner(hub, inbox);
   planner.actions = new ActionItems(hub, planner);
+  const team = new Team(hub, {
+    start: (id) => sessions.start(id),
+    removeResources: (id, opts) => sessions.removeResources(id, opts),
+    forget: (id) => {
+      inbox.forget(id);
+      mcp.forget(id);
+    },
+    recheckSetup: () => sessions.recheckSetup(),
+  });
 
   const root = dirname(dirname(fileURLToPath(import.meta.url)));
   const distDir = join(root, "dist");
@@ -85,12 +96,21 @@ async function main() {
     hub,
     inbox,
     planner,
+    team,
     port,
     browserToken: uiToken,
     agentToken: token,
     distDir: dev ? null : distDir,
     allowedOrigins: [uiOrigin, `http://127.0.0.1:${uiPort}`, `http://localhost:${port}`, `http://127.0.0.1:${port}`],
-    commands: makeCommands(hub, sessions, planner, inbox, sbx, mcp),
+    commands: makeCommands(hub, sessions, planner, sbx, mcp, team),
+  });
+  // Settings edited by hand in .yacc/config.yml (or roles/*.md) are picked up while HQ runs.
+  const stopWatching = watchConfig(repo.root, (result) => {
+    if ("error" in result) return hub.activity("config", null, `Your edit to config.yml wasn't applied: ${result.error} HQ keeps the last good settings; the next change in Settings will overwrite the file.`);
+    const refused = hub.applyExternalConfig(result.config);
+    if (refused) return hub.activity("config", null, `Your edit to config.yml wasn't applied: ${refused}`);
+    hub.activity("config", null, `Settings reloaded from config.yml.${result.fixed.length ? ` Adjusted: ${result.fixed.join(" ")}` : ""} Role changes reach an agent on its next start.`);
+    void sessions.recheckSetup();
   });
   sessions.startPolling();
   sbx.startApprovalPolling();
@@ -109,6 +129,7 @@ async function main() {
   const quit = () => {
     log.info(sessions.backend.persistent ? "stopping HQ — agent sessions keep running in tmux" : "stopping HQ and its agents — sandboxes and folders are kept");
     sessions.shutdown();
+    stopWatching();
     sbx.stopApprovalPolling();
     github.stop();
     process.exit(0);
@@ -118,6 +139,10 @@ async function main() {
 }
 
 main().catch((err) => {
+  if (err instanceof ConfigError) {
+    log.error(`${err.message}\n  Fix .yacc/config.yml and start again.`);
+    process.exit(1);
+  }
   if ((err as NodeJS.ErrnoException)?.code === "EADDRINUSE") {
     log.error(`Port ${arg("port") ?? 7420} is in use — another HQ may be running. Stop it, or pick another port: yacc-hq --port 7421`);
     process.exit(1);

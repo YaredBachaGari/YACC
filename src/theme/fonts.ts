@@ -1,5 +1,5 @@
 // UI font styles for panels, drawers, settings and agent terminals. The office
-// canvas keeps its pixel font. Saved per browser, not in .yacc/config.json,
+// canvas keeps its pixel font. Saved per browser, not in .yacc/config.yml,
 // because it's a personal choice, not a team setting.
 
 export type FontStyle = "pixel" | "clean" | "mono";

@@ -16,7 +16,8 @@ import type {
   Task,
 } from "../types";
 import { mulberry32 } from "../../lib/random";
-import type { Preset } from "./presets";
+import { completeConfig, type Preset } from "./presets";
+import { normalizeConfig } from "../roles";
 import { message as messageLines, slug, type TermLine } from "./terminalScripts";
 
 interface Timer {
@@ -100,7 +101,7 @@ export class World {
   }
 
   static initialSnapshot(preset: Preset): OfficeSnapshot {
-    const config = structuredClone(preset.config);
+    const config = completeConfig(structuredClone(preset.config));
     const tasks = structuredClone(preset.tasks);
     const workers = config.team.filter((a) => !a.isLead);
     const pullRequests: PullRequest[] = tasks
@@ -327,6 +328,7 @@ export class World {
   }
 
   configChanged() {
+    normalizeConfig(this.snap.config);
     this.emit({ type: "config.updated", config: structuredClone(this.snap.config) });
   }
 

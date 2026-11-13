@@ -5,6 +5,7 @@ import type { Board, Task, TaskStatus } from "../src/data/types";
 import type { Hub } from "./hub";
 import type { ActionItems } from "./actionItems";
 import type { Inbox } from "./inbox";
+import { can, leadOf, roleOf } from "../src/data/roles";
 
 export interface NewTask {
   boardId?: string;
@@ -38,7 +39,7 @@ export class Planner {
   agentId(ref: string): string | null {
     const r = ref.trim().toLowerCase();
     const team = this.snap.config.team;
-    if (r === "lead") return team.find((a) => a.isLead)?.id ?? null;
+    if (r === "lead") return leadOf(this.snap.config)?.id ?? null;
     return team.find((a) => a.id === r || a.name.toLowerCase() === r)?.id ?? null;
   }
 
@@ -110,6 +111,7 @@ export class Planner {
     if (!task) throw new Error(`No task ${taskId}`);
     if (!agentId) throw new Error(`No agent "${agentRef}". Team: ${this.snap.config.team.map((a) => a.id).join(", ")}`);
     const agent = this.hub.cfg(agentId)!;
+    if (!can(this.snap.config, agent, "work")) throw new Error(`${agent.name}'s role (${roleOf(this.snap.config, agent)?.title ?? agent.roleId}) doesn't take tasks. Pick an agent that list_workers shows as free.`);
     task.ownerId = agentId;
     if (task.status === "done") task.status = "todo";
     this.hub.emit({ type: "task.updated", task: { ...task } });
@@ -117,7 +119,7 @@ export class Planner {
     this.hub.planChanged();
     this.hub.activity("task.assigned", byId === "you" ? null : byId, `${this.hub.name(byId)} assigned ${task.id} ${task.title} to ${agent.name}`);
     const by = byId === "you" ? "The user (your human)" : this.hub.name(byId);
-    const text = `${by} assigned you ${task.id} (${task.title}). Pull main, start ${task.id}. Call the hq get_my_task tool for the details.`;
+    const text = `${by} assigned you ${task.id} (${task.title}). ${this.hub.repo.github ? "Pull main, start" : "Start"} ${task.id}. Call the hq get_my_task tool for the details.`;
     this.record(byId, agentId, `Start ${task.id}: ${task.title}`);
     this.inbox.push(agentId, { fromId: byId, kind: "assign", text });
     return task;
@@ -137,7 +139,7 @@ export class Planner {
     const words = { "in-progress": "started", blocked: "is blocked on", "in-review": "sent for review", done: "finished" }[status];
     this.hub.activity(status === "blocked" ? "agent.needs-input" : "task.started", agentId, `${name} ${words} ${task.id}${note ? `: ${note}` : ""}`);
     // Let the lead know when work is blocked or ready for review.
-    const lead = this.snap.config.team.find((a) => a.isLead);
+    const lead = leadOf(this.snap.config);
     if (lead && lead.id !== agentId && (status === "blocked" || status === "in-review" || status === "done"))
       this.message(agentId, lead.id, `${task.id} ${words}${note ? `: ${note}` : ""}${prNumber ? ` (PR #${prNumber})` : ""}`);
     return task;

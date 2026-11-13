@@ -127,7 +127,8 @@ HQ never stores key values and never reads your env files.
 
 | File | What | Commit it? |
 | --- | --- | --- |
-| `.yacc/config.json` (in your repo) | Team, workflow, stack, office name | Yes, so your team shares it |
+| `.yacc/config.yml` (in your repo) | CEO, headcount limit, roles, team, workflow, stack, office name | Yes, so your team shares it |
+| `.yacc/roles/<role>.md` (in your repo) | Each role's instructions | Yes |
 | `.yacc/plan.json` (in your repo) | Boards and tasks | Yes |
 | `docs/plan.md` (in your repo) | A readable copy of the plan, if **Settings → Project → Export plan** is on | Yes |
 | `~/.yacc/<project>/` | Agents' folders, app variables, action items and HQ's own records | No, it's outside your repo, on your machine only |
@@ -153,3 +154,36 @@ Windows 11 support is experimental. Run HQ in PowerShell or Windows Terminal, no
 | `D` | Toggle the debug panel |
 
 Drag to move around the office; scroll to zoom.
+
+## Roles, the org and settings files
+
+Every team has a human **CEO** and one **lead** agent. The CEO briefs the lead; the lead plans, assigns, reviews and reports back. Every other agent has a **role** you define.
+
+A role is a title, a set of permissions and instructions:
+
+| Permission | Team MCP tools it unlocks |
+| --- | --- |
+| `plan` | `create_board`, `create_task`, `update_task` |
+| `assign` | `assign_task` |
+| `work` | `get_my_task`, `set_my_status` |
+| `hire` | `hire_agent`, `dismiss_agent` |
+| `review`, `approve` | none yet; they gain tools with the workflow engine |
+
+Every agent also has `list_workers`, `get_status`, `list_tasks`, `send_message`, `ask_user` and `request_access`. So any agent can message any other, and any agent can ask the CEO directly.
+
+**Hiring.** An agent with `hire` (the lead, by default) adds agents without asking, when no role covers the work or extra work arrives. Three rules bound it: the CEO's headcount limit (`limits.maxAgents`) is never passed; a role created by a hire can take tasks and nothing more; and only agents that were hired can be dismissed by an agent. Agents the CEO added are the CEO's to remove. Each hire and dismissal is shown in Activity with its reason.
+
+**Settings files.** Settings live in `.yacc/config.yml`, and each role's instructions in `.yacc/roles/<role>.md`. The Settings screens write these files, and edits you make by hand are read while HQ runs (Activity says so, or says why an edit was not applied). An old `config.json` is converted on first start and kept as `config.json.bak`.
+
+```yaml
+ceo: { name: Abuti }
+limits: { maxAgents: 5 }
+roles:
+  lead: { title: Producer, can: [plan, assign, review, hire], instructions: roles/lead.md }
+  writer: { title: Writer, can: [work], instructions: roles/writer.md }
+team:
+  - { id: maya, name: Maya, role: lead }
+  - { id: ada, name: Ada, role: writer }     # reportsTo defaults to the lead
+```
+
+Boards and tasks stay in `.yacc/plan.json`: they are data, not settings. Secrets never go in either file.

@@ -30,17 +30,67 @@ export type AgentCli = "claude" | "codex";
 
 export const CLI_LABEL: Record<AgentCli, string> = { claude: "Claude Code", codex: "Codex" };
 
+/** What a role may do. The Team MCP offers each agent only the tools its role allows. */
+export const PERMISSIONS = ["plan", "assign", "work", "review", "approve", "hire"] as const;
+export type Permission = (typeof PERMISSIONS)[number];
+
+export const PERMISSION_LABEL: Record<Permission, string> = {
+  plan: "Plan: create boards and tasks",
+  assign: "Assign: give tasks to agents",
+  work: "Work: take tasks and report status",
+  review: "Review: check other agents' work",
+  approve: "Approve: sign off finished work",
+  hire: "Hire: add and dismiss agents",
+};
+
+/** The role every team has: the one agent that takes the CEO's instructions. */
+export const LEAD_ROLE_ID = "lead";
+/** `reportsTo` value for agents that report to the human. */
+export const CEO_ID = "ceo";
+
+/** A job on the team. Saved in .yacc/config.yml; its instructions in .yacc/roles/<id>.md. */
+export interface RoleConfig {
+  id: string; // "lead", "developer", "researcher"
+  title: string; // "Lead"
+  can: Permission[];
+  /** Markdown rules every agent with this role is given at session start. */
+  instructions: string;
+  /** Defaults for new agents with this role ("" / undefined = no preference). */
+  cli?: AgentCli;
+  model?: string;
+}
+
+/** The human. Always the head of the org chart. */
+export interface CeoConfig {
+  name: string; // shown in the org chart and to agents
+}
+
+export interface TeamLimits {
+  /** Most agents the team may have, lead included. The lead cannot hire past it. */
+  maxAgents: number;
+}
+
 export interface AgentConfig {
   id: string; // "john"
   name: string; // "John"
-  role: string; // "Lead" | "Developer" | "QA" | anything
+  /** Which role (RoleConfig.id) this agent has. */
+  roleId: string;
+  /** Who this agent reports to: an agent id, or CEO_ID. */
+  reportsTo: string;
+  /** Derived from the role's title on load and whenever roles change. Not saved. */
+  role: string;
+  /** Derived: roleId === LEAD_ROLE_ID. Not saved. */
   isLead: boolean;
+  /** Set when an agent (the lead) hired this one, to its id. Absent for agents the CEO added. */
+  hiredBy?: string;
+  /** Hired for one piece of work; the lead dismisses it when that is done. */
+  temporary?: boolean;
   cli: AgentCli;
   model: string; // optional start model ("" = the CLI's default; users can switch with /model)
   mode: AgentMode;
   color: string; // hex, used for the robot, owner dots and chips
   skills: string[];
-  roleMd: string; // contents of ROLE.md
+  roleMd: string; // a personal note for this agent, added to its role file
   sandbox: SandboxSettings;
   workspacePath: string | null; // an existing folder to use; null = HQ-managed clone
   /** MCP servers (names in sbx's registry) this agent's sandbox gets. */
@@ -95,6 +145,9 @@ export interface ProjectConfig {
 
 export interface HqConfig {
   project: ProjectConfig;
+  ceo: CeoConfig;
+  limits: TeamLimits;
+  roles: RoleConfig[];
   team: AgentConfig[];
   workflow: WorkflowConfig;
   /** Optional: what the project is built with (plan 009). */
@@ -363,6 +416,7 @@ export interface ActionItem {
 
 export interface NewAgentInput {
   name: string;
+  /** A role id, or a new title (a role is created for it). */
   role: string;
   cli?: AgentCli;
   model?: string;
@@ -381,8 +435,21 @@ export interface WelcomeInput {
 }
 
 export type AgentPatch = Partial<
-  Pick<AgentConfig, "name" | "role" | "cli" | "model" | "mode" | "color" | "skills" | "roleMd" | "workspacePath">
+  Pick<AgentConfig, "name" | "roleId" | "reportsTo" | "cli" | "model" | "mode" | "color" | "skills" | "roleMd" | "workspacePath">
 >;
+
+export type RolePatch = Partial<Pick<RoleConfig, "title" | "can" | "instructions" | "cli" | "model">>;
+
+export interface NewRoleInput {
+  title: string;
+  can?: Permission[];
+  instructions?: string;
+}
+
+export interface OrgPatch {
+  ceoName?: string;
+  maxAgents?: number;
+}
 
 export interface WorkflowPatch {
   review?: Partial<WorkflowConfig["review"]>;

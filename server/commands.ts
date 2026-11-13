@@ -1,6 +1,7 @@
 // Browser commands → server actions. Names match OfficeDataSource methods.
 
-import { SERVICE_KEYS, type AgentCli, type AgentConfig, type AgentPatch, type ReviewTool, type WelcomeInput, type NewMcpServer, type Board, type NewAgentInput, type ProjectConfig, type RemoveAgentOptions, type SandboxSettings, type SetupCheckId, type WorkflowPatch } from "../src/data/types";
+import { CEO_ID, LEAD_ROLE_ID, PERMISSIONS, SERVICE_KEYS, type AgentCli, type AgentConfig, type AgentPatch, type NewRoleInput, type OrgPatch, type ReviewTool, type RolePatch, type WelcomeInput, type NewMcpServer, type Board, type NewAgentInput, type ProjectConfig, type RemoveAgentOptions, type RoleConfig, type SandboxSettings, type SetupCheckId, type WorkflowPatch } from "../src/data/types";
+import { DEVELOPER_INSTRUCTIONS, MAX_AGENTS_CEILING, WORKER_BASE_INSTRUCTIONS, defaultRoles, findRole, freeRoleId, leadOf } from "../src/data/roles";
 import { LEAD_NAME, OFFICE_NAME_MAX } from "../src/data/names";
 import { STACK_CATEGORIES, stackSkills, stackTool, type StackChoice, type StackConfig } from "../src/data/stack";
 import { resolveAccess } from "./access";
@@ -8,12 +9,12 @@ import { ensureSkillCache } from "./skills";
 import { run } from "./lib/exec";
 import { agentPalette } from "../src/theme/tokens";
 import { Hub } from "./hub";
-import type { Inbox } from "./inbox";
 import type { Planner } from "./planner";
 import type { Sbx } from "./sbx";
 import type { SbxMcp } from "./sbxMcp";
 import type { Sessions } from "./sessions";
-import { newAgent } from "./store";
+import { newAgent, removeRoleFile } from "./store";
+import type { Team } from "./team";
 import { mergeByNotice } from "./githubSync";
 
 /** A stack from the browser, checked against the catalog. Null when nothing is chosen. */
@@ -45,7 +46,7 @@ const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(
 const str = (v: unknown, max = 2000) => (typeof v === "string" ? v.slice(0, max) : "");
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
 
-export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inbox: Inbox, sbx: Sbx, mcp: SbxMcp) {
+export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx: Sbx, mcp: SbxMcp, teamOps: Team) {
   /** Runs an sbx change and reports failures in the activity feed. */
   const attempt = async (agentId: string | null, what: string, fn: () => Promise<void>) => {
     try {
@@ -82,24 +83,23 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
 
     addAgent: (raw) => {
       const input = (raw ?? {}) as Partial<NewAgentInput>;
-      const name = str(input.name, 40).trim() || "Agent";
-      let id = slug(name);
-      for (let i = 2; team().some((a) => a.id === id); i++) id = `${slug(name)}-${i}`;
-      const used = new Set(team().map((a) => a.color));
-      const color = agentPalette.find((c) => !used.has(c)) ?? agentPalette[team().length % agentPalette.length];
-      const agent = newAgent(id, name, str(input.role, 40).trim() || "Developer", color, false);
-      agent.cli = input.cli === "codex" ? "codex" : "claude";
-      agent.model = str(input.model, 60).trim();
-      agent.mode = input.mode === "local" ? "local" : "sandbox";
-      const lead = team().find((a) => a.isLead);
-      if (lead) agent.sandbox = structuredClone(lead.sandbox);
-      team().push(agent);
-      const status = Hub.freshStatus(id);
-      hub.snap.agents.push(status);
-      hub.configChanged();
-      hub.emit({ type: "agent.updated", agent: structuredClone(status) });
+      const cfg = hub.snap.config;
+      if (team().length >= MAX_AGENTS_CEILING) return hub.activity("config", null, `A team can have at most ${MAX_AGENTS_CEILING} agents.`);
+      // A role id or title that exists, or a new title: then a role is made for it.
+      const wanted = str(input.role, 40).trim() || "developer";
+      let role = findRole(cfg, wanted);
+      if (!role || role.id === LEAD_ROLE_ID) {
+        role = { id: freeRoleId(cfg, wanted), title: wanted, can: ["work"], instructions: WORKER_BASE_INSTRUCTIONS };
+        cfg.roles.push(role);
+      }
+      const agent = teamOps.add({
+        name: str(input.name, 40),
+        roleId: role.id,
+        cli: input.cli === "codex" ? "codex" : input.cli === "claude" ? "claude" : undefined,
+        model: typeof input.model === "string" ? str(input.model, 60) : undefined,
+        mode: input.mode === "local" ? "local" : "sandbox",
+      });
       hub.activity("config", null, `Added ${agent.name} (${agent.role}). Press Start to launch their session.`);
-      if (agent.cli === "codex") void sessions.recheckSetup();
     },
 
     updateAgent: (id, patch) => {
@@ -107,7 +107,11 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
       if (!agent) return;
       const p = (patch ?? {}) as AgentPatch;
       const before = `${agent.cli}/${agent.mode}`;
-      for (const k of ["name", "role", "model", "color", "roleMd"] as const) if (typeof p[k] === "string") agent[k] = str(p[k], 8000);
+      for (const k of ["name", "model", "color", "roleMd"] as const) if (typeof p[k] === "string") agent[k] = str(p[k], 8000);
+      const cfg = hub.snap.config;
+      // The lead keeps its role, and nobody is made lead this way: a team has exactly one.
+      if (typeof p.roleId === "string" && agent.roleId !== LEAD_ROLE_ID && p.roleId !== LEAD_ROLE_ID && cfg.roles.some((r) => r.id === p.roleId)) agent.roleId = p.roleId;
+      if (typeof p.reportsTo === "string" && agent.roleId !== LEAD_ROLE_ID && (p.reportsTo === CEO_ID || (p.reportsTo !== agent.id && hub.cfg(p.reportsTo)))) agent.reportsTo = p.reportsTo;
       if (p.mode === "sandbox" || p.mode === "local") agent.mode = p.mode;
       if ((p.cli === "claude" || p.cli === "codex") && p.cli !== agent.cli) {
         agent.cli = p.cli;
@@ -128,25 +132,71 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
 
     removeAgent: async (id, opts) => {
       const agent = hub.cfg(str(id));
-      if (!agent || agent.isLead) return;
+      if (!agent || agent.roleId === LEAD_ROLE_ID) return;
       const o = (opts ?? {}) as Partial<RemoveAgentOptions>;
-      const removed = await sessions.removeResources(agent.id, { deleteSandbox: o.deleteSandbox !== false, deleteFolder: o.deleteFolder === true });
-      hub.snap.config.team = team().filter((a) => a.id !== agent.id);
-      hub.snap.agents = hub.snap.agents.filter((a) => a.agentId !== agent.id);
-      inbox.forget(agent.id);
-      mcp.forget(agent.id);
-      for (const t of hub.snap.tasks)
-        if (t.ownerId === agent.id && t.status !== "done") {
-          t.ownerId = null;
-          if (t.status === "in-progress") t.status = "todo";
-          hub.emit({ type: "task.updated", task: { ...t } });
-        }
-      hub.planChanged();
-      hub.emit({ type: "agent.removed", agentId: agent.id });
-      hub.configChanged();
-      const what = removed.length ? ` Deleted: ${removed.join(" and ")}.` : "";
-      const kept = removed.includes("folder") ? "" : " Their folder is kept.";
+      const { deleted } = await teamOps.remove(agent.id, { deleteSandbox: o.deleteSandbox !== false, deleteFolder: o.deleteFolder === true });
+      const what = deleted.length ? ` Deleted: ${deleted.join(" and ")}.` : "";
+      const kept = deleted.includes("folder") ? "" : " Their folder is kept.";
       hub.activity("config", null, `Removed ${agent.name}.${what}${kept}`);
+    },
+
+    // ---------------------------------------------------------- roles and org
+
+    addRole: (raw) => {
+      const input = (raw ?? {}) as Partial<NewRoleInput>;
+      const cfg = hub.snap.config;
+      const title = str(input.title, 40).trim();
+      if (!title) return;
+      if (findRole(cfg, title)) return hub.activity("config", null, `There is already a "${title}" role.`);
+      const role: RoleConfig = {
+        id: freeRoleId(cfg, title),
+        title,
+        can: Array.isArray(input.can) ? PERMISSIONS.filter((p) => input.can!.includes(p)) : ["work"],
+        instructions: typeof input.instructions === "string" && input.instructions.trim() ? str(input.instructions, 20_000) : WORKER_BASE_INSTRUCTIONS,
+      };
+      cfg.roles.push(role);
+      hub.configChanged();
+      hub.activity("config", null, `Added the ${role.title} role.`);
+    },
+
+    updateRole: (id, patch) => {
+      const role = hub.snap.config.roles.find((r) => r.id === str(id, 60));
+      if (!role) return;
+      const p = (patch ?? {}) as RolePatch;
+      if (typeof p.title === "string" && p.title.trim()) role.title = str(p.title, 40).trim();
+      if (Array.isArray(p.can)) role.can = PERMISSIONS.filter((x) => p.can!.includes(x));
+      if (typeof p.instructions === "string") role.instructions = str(p.instructions, 20_000);
+      if (p.cli === "claude" || p.cli === "codex") role.cli = p.cli;
+      else if (p.cli === null || (p.cli as unknown) === "") delete role.cli;
+      if (typeof p.model === "string") {
+        if (p.model.trim()) role.model = str(p.model, 60).trim();
+        else delete role.model;
+      }
+      hub.configChanged(); // the lead role keeps plan + assign (normalizeConfig)
+    },
+
+    removeRole: (id) => {
+      const cfg = hub.snap.config;
+      const role = cfg.roles.find((r) => r.id === str(id, 60));
+      if (!role) return;
+      if (role.id === LEAD_ROLE_ID) return hub.activity("config", null, "The lead role is built in and can't be removed.");
+      const holders = cfg.team.filter((a) => a.roleId === role.id).map((a) => a.name);
+      if (holders.length) return hub.activity("config", null, `${holders.join(", ")} ${holders.length > 1 ? "have" : "has"} the ${role.title} role. Give them another role first.`);
+      cfg.roles = cfg.roles.filter((r) => r !== role);
+      hub.configChanged();
+      removeRoleFile(hub.repo.root, role.id);
+      hub.activity("config", null, `Removed the ${role.title} role.`);
+    },
+
+    updateOrg: (patch) => {
+      const p = (patch ?? {}) as OrgPatch;
+      const cfg = hub.snap.config;
+      if (typeof p.ceoName === "string" && p.ceoName.trim()) cfg.ceo.name = str(p.ceoName, 40).trim();
+      if (typeof p.maxAgents === "number" && Number.isFinite(p.maxAgents)) {
+        // Never below the team you already have: lowering the limit doesn't fire anyone.
+        cfg.limits.maxAgents = Math.max(cfg.team.length, 2, Math.min(MAX_AGENTS_CEILING, Math.round(p.maxAgents)));
+      }
+      hub.configChanged();
     },
 
     updateSandbox: (id, patch) => {
@@ -246,21 +296,33 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
       const input = (raw ?? {}) as Partial<WelcomeInput>;
       const cli = (c: unknown): AgentCli => (c === "codex" ? "codex" : "claude");
       const used = new Set<string>();
-      const make = (name: string, role: string, agentCli: AgentCli, isLead: boolean): AgentConfig => {
-        const clean = str(name, 40).trim() || (isLead ? "Lead" : "Agent");
+      const cfg = hub.snap.config;
+      const roles = defaultRoles();
+      // A worker's job title becomes a role. This welcome sets up a coding team, so they start from the developer's rules.
+      const roleFor = (title: string): RoleConfig => {
+        const clean = str(title, 40).trim() || "Developer";
+        let role = roles.find((r) => r.id !== LEAD_ROLE_ID && r.title.toLowerCase() === clean.toLowerCase());
+        if (!role) {
+          role = { id: freeRoleId({ roles }, clean), title: clean, can: ["work"], instructions: DEVELOPER_INSTRUCTIONS };
+          roles.push(role);
+        }
+        return role;
+      };
+      const make = (name: string, roleId: string, agentCli: AgentCli, reportsTo: string): AgentConfig => {
+        const clean = str(name, 40).trim() || (roleId === LEAD_ROLE_ID ? "Lead" : "Agent");
         let id = slug(clean);
         for (let i = 2; used.has(id); i++) id = `${slug(clean)}-${i}`;
         used.add(id);
-        const agent = newAgent(id, clean, isLead ? "Lead" : str(role, 40).trim() || "Developer", agentPalette[used.size - 1] ?? agentPalette[0], isLead);
+        const agent = newAgent(id, clean, roleId, agentPalette[used.size - 1] ?? agentPalette[0], reportsTo);
         agent.cli = agentCli;
         return agent;
       };
-      const lead = make(input.lead?.name ?? LEAD_NAME, "Lead", cli(input.lead?.cli), true);
-      const workers = (Array.isArray(input.workers) ? input.workers : []).slice(0, 11).map((w) => make(w?.name ?? "", w?.role ?? "", cli(w?.cli), false));
-      if (!workers.length) return hub.activity("config", null, "Add at least one worker to the team.");
-      const cfg = hub.snap.config;
+      const lead = make(input.lead?.name ?? LEAD_NAME, LEAD_ROLE_ID, cli(input.lead?.cli), CEO_ID);
+      const workers = (Array.isArray(input.workers) ? input.workers : []).slice(0, MAX_AGENTS_CEILING - 1).map((w) => make(w?.name ?? "", roleFor(w?.role ?? "").id, cli(w?.cli), lead.id));
       if (typeof input.projectName === "string" && input.projectName.trim()) cfg.project.name = str(input.projectName, 80).trim();
+      cfg.roles = roles;
       cfg.team = [lead, ...workers];
+      cfg.limits.maxAgents = Math.max(cfg.limits.maxAgents, cfg.team.length);
       const tools: ReviewTool[] = ["coderabbit", "greptile", "copilot", "human", "custom"];
       if (tools.includes(input.reviewTool as ReviewTool)) cfg.workflow.review.tool = input.reviewTool as ReviewTool;
       if (typeof input.reviewEnabled === "boolean") cfg.workflow.review.enabled = input.reviewEnabled;
@@ -272,7 +334,7 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
       }
       hub.snap.agents = cfg.team.map((a) => Hub.freshStatus(a.id));
       hub.snap.welcome = false;
-      hub.configChanged(); // saves .yacc/config.json for the first time
+      hub.configChanged(); // saves .yacc/config.yml for the first time
       hub.planChanged();
       await sessions.recheckSetup();
       await sbx.refresh();
@@ -289,7 +351,7 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
       Object.assign(wf.deploy, p.deploy ?? {});
       hub.configChanged();
       // The lead was told the old rule; tell it the new one now, so no restart is needed.
-      const lead = hub.snap.config.team.find((a) => a.isLead);
+      const lead = leadOf(hub.snap.config);
       if (lead && wf.merge.by !== mergeBy) {
         const waiting = hub.snap.pullRequests.filter((pr) => pr.review === "passed" && !pr.merged && !pr.closed).map((pr) => pr.number);
         planner.notify(lead.id, mergeByNotice(wf.merge.by, waiting));

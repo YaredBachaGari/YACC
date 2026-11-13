@@ -1,7 +1,8 @@
 import { agentPalette } from "../../theme/tokens";
 import type { OfficeDataSource, OfficeEvent, SimSpeed } from "../source";
 import { stackDomains } from "../stack";
-import { HOST_TERMINAL, type AccessRequest, AgentConfig, AgentPatch, Board, NewAgentInput, ProjectConfig, SandboxSettings, WorkflowPatch } from "../types";
+import { HOST_TERMINAL, LEAD_ROLE_ID, PERMISSIONS, type AccessRequest, AgentConfig, AgentPatch, Board, NewAgentInput, NewRoleInput, OrgPatch, ProjectConfig, RolePatch, SandboxSettings, WorkflowPatch } from "../types";
+import { MAX_AGENTS_CEILING, WORKER_BASE_INSTRUCTIONS, findRole, freeRoleId } from "../roles";
 import { defaultPresetId, presets, type Preset } from "./presets";
 import { Simulation } from "./simulation";
 import * as T from "./terminalScripts";
@@ -218,10 +219,17 @@ export function createMockSource(): OfficeDataSource {
       const used = new Set(team.map((a) => a.color));
       const color = agentPalette.find((c) => !used.has(c)) ?? agentPalette[team.length % agentPalette.length];
       const lead = world.lead();
+      const cfg = world.snap.config;
+      const wanted = input.role.trim() || "Developer";
+      let role = findRole(cfg, wanted);
+      if (!role || role.id === LEAD_ROLE_ID) {
+        role = { id: freeRoleId(cfg, wanted), title: wanted, can: ["work"], instructions: WORKER_BASE_INSTRUCTIONS };
+        cfg.roles.push(role);
+      }
       const agent: AgentConfig = {
-        id, name: input.name.trim() || "Agent", role: input.role.trim() || "Developer", isLead: false, cli: input.cli ?? "claude",
+        id, name: input.name.trim() || "Agent", roleId: role.id, reportsTo: lead.id, role: role.title, isLead: false, cli: input.cli ?? "claude",
         model: input.model ?? "", mode: input.mode, color, skills: ["plan", "review"],
-        roleMd: `# ${input.name} — ${input.role}\n\nYou build the tasks assigned to you.`,
+        roleMd: "",
         sandbox: structuredClone(lead.sandbox),
         workspacePath: null,
       };
@@ -386,6 +394,37 @@ export function createMockSource(): OfficeDataSource {
       }
       st.approvals = approvalId === "all" ? [] : st.approvals.filter((a) => (decision === "allow" ? a.host !== target?.host : a.id !== approvalId));
       syncSbx();
+    },
+
+    addRole(input: NewRoleInput) {
+      const cfg = world.snap.config;
+      const title = input.title.trim();
+      if (!title || findRole(cfg, title)) return;
+      cfg.roles.push({ id: freeRoleId(cfg, title), title, can: input.can ?? ["work"], instructions: input.instructions?.trim() || WORKER_BASE_INSTRUCTIONS });
+      world.configChanged();
+    },
+
+    updateRole(id, patch: RolePatch) {
+      const role = world.snap.config.roles.find((r) => r.id === id);
+      if (!role) return;
+      if (patch.title?.trim()) role.title = patch.title.trim();
+      if (patch.can) role.can = PERMISSIONS.filter((p) => patch.can!.includes(p));
+      if (typeof patch.instructions === "string") role.instructions = patch.instructions;
+      world.configChanged();
+    },
+
+    removeRole(id) {
+      const cfg = world.snap.config;
+      if (id === LEAD_ROLE_ID || cfg.team.some((a) => a.roleId === id)) return;
+      cfg.roles = cfg.roles.filter((r) => r.id !== id);
+      world.configChanged();
+    },
+
+    updateOrg(patch: OrgPatch) {
+      const cfg = world.snap.config;
+      if (patch.ceoName?.trim()) cfg.ceo.name = patch.ceoName.trim();
+      if (typeof patch.maxAgents === "number") cfg.limits.maxAgents = Math.max(cfg.team.length, 2, Math.min(MAX_AGENTS_CEILING, Math.round(patch.maxAgents)));
+      world.configChanged();
     },
 
     updateWorkflow(patch: WorkflowPatch) {

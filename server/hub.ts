@@ -4,6 +4,7 @@
 import type { OfficeEvent } from "../src/data/source";
 import type { ActivityType, AgentConfig, AgentStatus, HqConfig, OfficeSnapshot, SessionInfo, SetupState } from "../src/data/types";
 import { writePlanExport } from "./planExport";
+import { normalizeConfig } from "../src/data/roles";
 import { saveConfig, savePlan, type PlanFile } from "./store";
 import type { RepoInfo } from "./repo";
 
@@ -122,9 +123,37 @@ export class Hub {
     this.emit({ type: "activity", event });
   }
 
+  /** Call after any change to settings: keeps them consistent, writes config.yml, tells the browsers. */
   configChanged() {
+    normalizeConfig(this.snap.config);
     saveConfig(this.repo.root, this.snap.config);
     this.emit({ type: "config.updated", config: structuredClone(this.snap.config) });
+  }
+
+  /**
+   * Settings edited by hand in config.yml while HQ runs. Applied when safe: an agent whose
+   * session is running can't be removed this way (stop it first). Returns why not, or null.
+   */
+  applyExternalConfig(next: HqConfig): string | null {
+    const cur = this.snap.config;
+    if (next.project.id !== cur.project.id) return `project.id can't change while HQ runs (it names the sandboxes and folders). It is "${cur.project.id}".`;
+    const nextIds = new Set(next.team.map((a) => a.id));
+    const running = cur.team.filter((a) => !nextIds.has(a.id) && this.status(a.id)?.session.state !== "stopped");
+    if (running.length) return `${running.map((a) => a.name).join(", ")} ${running.length > 1 ? "are" : "is"} still running. Stop ${running.length > 1 ? "them" : "it"} before removing ${running.length > 1 ? "them" : "it"} from config.yml.`;
+    next.project.path = cur.project.path;
+    next.project.hqPort = cur.project.hqPort;
+    this.snap.config = next;
+    const removed = this.snap.agents.filter((s) => !nextIds.has(s.agentId)).map((s) => s.agentId);
+    this.snap.agents = this.snap.agents.filter((s) => nextIds.has(s.agentId));
+    for (const a of next.team) if (!this.status(a.id)) this.snap.agents.push(Hub.freshStatus(a.id));
+    for (const t of this.snap.tasks)
+      if (t.ownerId && removed.includes(t.ownerId) && t.status !== "done") {
+        t.ownerId = null;
+        if (t.status === "in-progress") t.status = "todo";
+      }
+    if (removed.length) this.planChanged();
+    this.emit({ type: "snapshot", snapshot: structuredClone(this.snap) });
+    return null;
   }
 
   planChanged() {
