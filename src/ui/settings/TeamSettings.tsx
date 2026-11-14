@@ -7,10 +7,11 @@ import { agentPalette } from "../../theme/tokens";
 import { Field, Portrait, SectionTitle } from "../kit";
 import { CommitInput } from "./controls";
 import { RemoveAgentDialog } from "./RemoveAgentDialog";
+import { ModelDatalists, modelListId, modelPlaceholder } from "./ModelsSettings";
 
 export function CliSelect({ value, onChange }: { value: AgentCli; onChange: (v: AgentCli) => void }) {
   return (
-    <select className="field" value={value} onChange={(e) => onChange(e.target.value as AgentCli)} aria-label="Coding agent">
+    <select className="field" value={value} onChange={(e) => onChange(e.target.value as AgentCli)} aria-label="Model">
       {(Object.keys(CLI_LABEL) as AgentCli[]).map((c) => (
         <option key={c} value={c}>
           {CLI_LABEL[c]}
@@ -112,7 +113,7 @@ function AgentRow({ agent, expanded, onToggle, onRemove }: { agent: AgentConfig;
             </select>
           )}
         </Field>
-        <Field label="Agent">
+        <Field label="Model">
           <CliSelect value={agent.cli} onChange={(cli) => set({ cli })} />
         </Field>
         <Field label="Runs in">
@@ -192,14 +193,8 @@ function AgentRow({ agent, expanded, onToggle, onRemove }: { agent: AgentConfig;
               ))}
             </div>
           </Field>
-          <Field label="Start with model" hint="Optional. Leave empty to use the CLI's default — you can always switch with /model in the terminal. Set it to keep a choice across restarts (e.g. Opus for the lead).">
-            <CommitInput
-              className="field"
-              value={agent.model}
-              placeholder={`${CLI_LABEL[agent.cli]} default`}
-              list={agent.cli === "codex" ? "codex-models" : "claude-models"}
-              onCommit={(v) => set({ model: v.trim() })}
-            />
+          <Field label="Start with model" hint="Optional. Leave empty for the default. You can switch with /model in the agent's terminal; set it here to keep a choice across restarts (e.g. Opus for the lead). Sign-in per provider: Settings → Models.">
+            <CommitInput className="field" value={agent.model} placeholder={modelPlaceholder(agent.cli)} list={modelListId(agent.cli)} onCommit={(v) => set({ model: v.trim() })} />
           </Field>
           <Field label="Skills" hint="Comma separated. Copied into the agent's .claude/skills.">
             <CommitInput
@@ -234,7 +229,13 @@ function AddAgent() {
   const roles = (useOffice((s) => s.snap?.config.roles) ?? []).filter((r) => r.id !== LEAD_ROLE_ID);
   const limit = useOffice((s) => s.snap?.config.limits.maxAgents) ?? MAX_AGENTS_CEILING;
   const [role, setRole] = useState(roles[0]?.title ?? "Developer");
-  const [cli, setCli] = useState<AgentCli>("claude");
+  const [cli, setCli] = useState<AgentCli>(roles[0]?.cli ?? "claude");
+  // Picking a role with a default model picks that model too (you can still change it).
+  const pickRole = (title: string) => {
+    setRole(title);
+    const r = roles.find((x) => x.title.toLowerCase() === title.trim().toLowerCase());
+    if (r?.cli) setCli(r.cli);
+  };
   const [mode, setMode] = useState<AgentMode>("sandbox");
   const team = useOffice((s) => s.snap?.config.team) ?? [];
   const suggested = nextAgentName(team.map((a) => a.name));
@@ -256,9 +257,9 @@ function AddAgent() {
           <input className="field" value={name} onChange={(e) => setName(e.target.value)} placeholder={suggested} />
         </Field>
         <Field label="Role" hint="Pick a role, or type a new title to create one.">
-          <input className="field" value={role} list="role-suggestions" onChange={(e) => setRole(e.target.value)} />
+          <input className="field" value={role} list="role-suggestions" onChange={(e) => pickRole(e.target.value)} />
         </Field>
-        <Field label="Agent">
+        <Field label="Model">
           <CliSelect value={cli} onChange={setCli} />
         </Field>
         <Field label="Runs in">
@@ -275,14 +276,7 @@ function AddAgent() {
         HQ starts a new sandbox with the lead's network policy and allows it to reach HQ at host.docker.internal.
         {team.length >= limit && ` You are at your headcount limit of ${limit}: you can still add agents yourself, but the lead can't hire.`}
       </p>
-      <datalist id="codex-models">
-        <option value="gpt-5.6-sol" />
-      </datalist>
-      <datalist id="claude-models">
-        <option value="opus" />
-        <option value="sonnet" />
-        <option value="haiku" />
-      </datalist>
+      <ModelDatalists />
       <datalist id="role-suggestions">
         {roles.map((r) => (
           <option key={r.id} value={r.title} />

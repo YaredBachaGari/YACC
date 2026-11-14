@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { toolsFor } from "../../data/roles";
 import { ROLE_LIBRARY } from "../../data/templates";
-import { LEAD_ROLE_ID, PERMISSIONS, PERMISSION_LABEL, type Permission, type RoleConfig } from "../../data/types";
+import { CLI_LABEL, LEAD_ROLE_ID, PERMISSIONS, PERMISSION_LABEL, type AgentCli, type Permission, type RoleConfig } from "../../data/types";
 import { officeActions, useOffice } from "../../store/office";
 import { Field, SectionTitle } from "../kit";
 import { CommitInput } from "./controls";
+import { ModelDatalists, modelListId, modelPlaceholder } from "./ModelsSettings";
 
 /** Permissions the lead role can't lose: without them nobody could plan or hand out work. */
 const LEAD_LOCKED: Permission[] = ["plan", "assign"];
@@ -28,11 +29,13 @@ export function RolesSettings() {
         </div>
       </section>
       <AddRole />
+      <ModelDatalists />
     </div>
   );
 }
 
 function RoleRow({ role, holders, expanded, onToggle }: { role: RoleConfig; holders: string[]; expanded: boolean; onToggle: () => void }) {
+  const servers = useOffice((s) => s.snap?.mcp?.servers) ?? [];
   const isLead = role.id === LEAD_ROLE_ID;
   const set = (patch: Parameters<typeof officeActions.updateRole>[1]) => officeActions.updateRole(role.id, patch);
   const toggle = (p: Permission) => set({ can: role.can.includes(p) ? role.can.filter((x) => x !== p) : [...role.can, p] });
@@ -84,9 +87,38 @@ function RoleRow({ role, holders, expanded, onToggle }: { role: RoleConfig; hold
           <Field label="Instructions" hint={`What this role does and how. Saved to .yacc/roles/${role.id}.md. HQ adds the team, the reporting lines and the tools when the agent starts.`}>
             <CommitInput multiline className="field h-[220px] resize-y font-term text-[17px] leading-tight" value={role.instructions} onCommit={(v) => set({ instructions: v })} />
           </Field>
-          <Field label="Default model for new agents" hint="Optional. An agent's own setting wins.">
-            <CommitInput className="field" value={role.model ?? ""} placeholder="The agent CLI's default" onCommit={(v) => set({ model: v.trim() })} />
-          </Field>
+          <div className="grid grid-cols-2 gap-2.5">
+            <Field label="Default model for new agents" hint="New agents with this role, including ones the lead hires, start on it. An agent's own setting wins.">
+              <select className="field" value={role.cli ?? ""} onChange={(e) => set({ cli: (e.target.value || null) as AgentCli })}>
+                <option value="">No preference (Claude Code)</option>
+                {(Object.keys(CLI_LABEL) as AgentCli[]).map((c) => (
+                  <option key={c} value={c}>
+                    {CLI_LABEL[c]}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Model name" hint="Optional. Empty uses that program's default.">
+              <CommitInput className="field" value={role.model ?? ""} placeholder={modelPlaceholder(role.cli ?? "claude")} list={modelListId(role.cli ?? "claude")} onCommit={(v) => set({ model: v.trim() })} />
+            </Field>
+          </div>
+          {servers.length > 0 && (
+            <fieldset className="m-0 border-0 p-0">
+              <legend className="mb-1 p-0 text-[14px] font-bold">Tools (MCP servers) for everyone with this role</legend>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                {servers.map((sv) => {
+                  const on = !!role.tools?.includes(sv.name);
+                  return (
+                    <label key={sv.name} className="flex items-center gap-2 text-[14px]">
+                      <input type="checkbox" checked={on} onChange={() => set({ tools: on ? (role.tools ?? []).filter((t) => t !== sv.name) : [...(role.tools ?? []), sv.name] })} />
+                      {sv.name}
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="m-0 mt-1 text-[12px] text-muted">On top of the servers you tick per agent in Settings → MCP. Add Perplexity for research in Settings → Models.</p>
+            </fieldset>
+          )}
         </div>
       )}
     </div>

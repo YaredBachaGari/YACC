@@ -34,6 +34,8 @@ jobs:
         run: npx tsx scripts/workflow-test.ts
       - name: Roles, YAML settings and hiring
         run: npx tsx scripts/roles-test.ts
+      - name: Models, sign-in and runtimes
+        run: npx tsx scripts/models-test.ts
       - name: Session backends (fake agent)
         run: npx tsx scripts/session-backend-test.ts
       - name: Agent clones (line endings)

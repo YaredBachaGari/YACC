@@ -18,7 +18,7 @@ const NEEDED: Record<SetupCheck["neededFor"], string> = {
   github: "for PRs & reviews",
 };
 
-function CheckRow({ c, running, onRun }: { c: SetupCheck; running: boolean; onRun: () => void }) {
+export function CheckRow({ c, running, onRun }: { c: SetupCheck; running: boolean; onRun: () => void }) {
   const [copied, setCopied] = useState(false);
   const [icon, color] = ICON[c.status];
   return (

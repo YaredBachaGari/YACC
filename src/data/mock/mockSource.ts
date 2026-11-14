@@ -1,3 +1,4 @@
+import { PROVIDERS } from "../models";
 import { agentPalette } from "../../theme/tokens";
 import type { OfficeDataSource, OfficeEvent, SimSpeed } from "../source";
 import { stackDomains } from "../stack";
@@ -255,7 +256,10 @@ export function createMockSource(): OfficeDataSource {
         const holder = world.snap.config.team.find((a) => a !== agent && a.desk === patch.desk);
         if (holder) holder.desk = agent.desk;
       }
+      // As on the server: model names don't carry over to another program.
+      const switched = patch.cli && patch.cli !== agent.cli && typeof patch.model !== "string";
       Object.assign(agent, patch);
+      if (switched) agent.model = "";
       world.configChanged();
     },
 
@@ -439,6 +443,23 @@ export function createMockSource(): OfficeDataSource {
       if (patch.title?.trim()) role.title = patch.title.trim();
       if (patch.can) role.can = PERMISSIONS.filter((p) => patch.can!.includes(p));
       if (typeof patch.instructions === "string") role.instructions = patch.instructions;
+      if (patch.cli) role.cli = patch.cli;
+      else if (patch.cli === null || (patch.cli as unknown) === "") delete role.cli;
+      if (typeof patch.model === "string") {
+        if (patch.model.trim()) role.model = patch.model.trim();
+        else delete role.model;
+      }
+      if (Array.isArray(patch.tools)) {
+        if (patch.tools.length) role.tools = [...new Set(patch.tools)];
+        else delete role.tools;
+      }
+      world.configChanged();
+    },
+
+    setProviderAuth(provider, auth) {
+      const cfg = world.snap.config;
+      if (!PROVIDERS[provider]?.auth.includes(auth)) return;
+      cfg.providers = { ...(cfg.providers ?? {}), [provider]: { auth } };
       world.configChanged();
     },
 

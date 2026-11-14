@@ -8,7 +8,8 @@ import { homedir } from "node:os";
 import { stackSkills } from "../src/data/stack";
 import { hasHqSkills, prepareSkills } from "./skills";
 import { resolve, sep } from "node:path";
-import { HOST_TERMINAL, type AgentCli, type SetupCheckId, type WorkspaceInfo } from "../src/data/types";
+import { CLI_LABEL, HOST_TERMINAL, type AgentCli, type SetupCheckId, type WorkspaceInfo } from "../src/data/types";
+import { DEEPSEEK_SBX_PROVIDER, requiredChecks, runtimeOf, unsupportedReason } from "../src/data/models";
 import { adapters, localBinary } from "./adapters";
 import type { Hub } from "./hub";
 import { sessionBackend, type LaunchSpec, type TermHandle } from "./backends";
@@ -22,6 +23,19 @@ import { POLICY_NOT_INITIALIZED, policyVerdict, runSetupChecks } from "./setup";
 import { ensureWorkspace, workspaceFor } from "./workspace";
 
 const TERM_ENV = { ...process.env, TERM: "xterm-256color", COLORTERM: "truecolor" } as Record<string, string>;
+
+/** `sbx settings get model.providers` → the providers object (empty when unset or unreadable). */
+export function parseProviders(out: string): Record<string, unknown> {
+  const start = out.indexOf("{");
+  const end = out.lastIndexOf("}");
+  if (start < 0 || end <= start) return {};
+  try {
+    const v = JSON.parse(out.slice(start, end + 1)) as unknown;
+    return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
 /**
  * Shells you type in (Shell tab, Terminal panel): CLIs print links as real links (OSC 8), so a long
  * URL stays one clickable link instead of being cut across lines. Not for agent sessions: tmux
@@ -95,11 +109,18 @@ export class Sessions {
     };
     if (!setup.checks.find((c) => c.id === "tmux" && c.status === "ok")) return fail("tmux is not installed. See the setup checklist.");
     if (agent.mode === "sandbox" && !setup.sandboxReady) return fail("Docker Sandboxes isn't ready on this machine. Finish the setup checklist, or switch this agent to Local mode.");
-    const check = (cid: string) => setup.checks.find((c) => c.id === cid)?.status;
-    if (agent.mode === "local" && agent.cli === "claude" && check("claude") !== "ok") return fail("Claude Code isn't installed. See the setup checklist.");
-    if (agent.mode === "local" && agent.cli === "codex" && check("codex") !== "ok") return fail("Codex isn't installed on this machine. See the setup checklist, or run this agent in a sandbox.");
-    if (agent.mode === "sandbox" && agent.cli === "codex" && check("openai-secret") !== "ok")
-      return fail("Codex needs an OpenAI key in sbx. Run `sbx secret set openai --oauth` (Setup checklist → Run in terminal).");
+    const cfg = hub.snap.config;
+    const unsupported = unsupportedReason(agent, cfg.providers);
+    if (unsupported) return fail(unsupported);
+    // Each model needs its program and its sign-in (models.ts → requiredChecks). A check the list doesn't
+    // have yet (the agent's model just changed) is run first.
+    const needed = requiredChecks(agent, cfg);
+    if (needed.some((cid) => !hub.snap.setup.checks.some((c) => c.id === cid))) await this.recheckSetup();
+    for (const cid of needed) {
+      const c = hub.snap.setup.checks.find((x) => x.id === cid);
+      if (c && (c.status === "missing" || c.status === "unsupported"))
+        return fail(`${c.label}: ${c.detail}${c.fix?.runnable ? " (Setup checklist → Run in terminal)" : " See the setup checklist."}`);
+    }
 
     const name = this.name(id);
     this.onSessionDown(id);
@@ -119,10 +140,10 @@ export class Sessions {
         if (skills.error) hub.activity("session", id, `${agent.name}: some agent skills didn't install (${skills.error.slice(0, 120)}). Starting anyway.`);
       }
       if (!(await this.backend.exists(name))) {
-        const launch = adapter.launch(agent);
+        const launch = adapter.launch(agent, { cfg: hub.snap.config, hostEnv: process.env });
         const envFile = this.envFileFor(id);
         // Local mode: the agent gets the env file's variables (tmux only: there's no shell to load them into otherwise).
-        let spec: LaunchSpec = { file: localBinary[agent.cli], args: launch.args, envFile };
+        let spec: LaunchSpec = { file: localBinary(agent.cli), args: launch.args, envFile, ...(launch.env ? { env: launch.env } : {}) };
         if (agent.mode === "local" && envFile && !this.backend.persistent)
           hub.activity("session", id, `${agent.name}'s env file isn't loaded in Local mode on Windows. Use Sandbox mode for app variables.`);
         if (agent.mode === "sandbox") {
@@ -136,14 +157,14 @@ export class Sessions {
           const size = !isNew ? [] : [...(cpus ? ["--cpus", String(cpus)] : []), ...(memoryGb ? ["--memory", `${Math.round(memoryGb * 1024)}m`] : [])];
           const env = [...(envFile ? ["--env-file", envFile] : []), "-e", `BROWSER=${SANDBOX_BROWSER}`];
           const args = launch.args.length ? ["--", ...launch.args] : [];
-          spec = { file: "sbx", args: ["run", "--name", name, ...size, ...env, launch.sbxAgent, dir, ...args], envFile: null };
+          spec = { file: "sbx", args: ["run", "--name", name, ...size, ...env, ...(launch.sbxArgs ?? []), launch.sbxAgent, dir, ...args], envFile: null };
         }
         await this.backend.create(name, dir, spec, { cols: 200, rows: 50 });
       }
       this.attach(id);
       hub.setSession(id, { state: "running", detail: null, workspace: dir });
       hub.setStatus(id, { state: "idle", note: agent.mode === "sandbox" ? "Sandbox running" : "Running locally" });
-      hub.activity("session", id, `${agent.name} started (${agent.cli === "codex" ? "Codex" : "Claude Code"}, ${agent.mode === "sandbox" ? "Docker Sandbox" : "Local mode"})`);
+      hub.activity("session", id, `${agent.name} started (${CLI_LABEL[agent.cli]}${agent.model.trim() ? `, ${agent.model.trim()}` : ""}, ${agent.mode === "sandbox" ? "Docker Sandbox" : "Local mode"})`);
       if (agent.mode === "sandbox") {
         setTimeout(() => void this.refreshSandboxSizes(), 4000);
         void this.whenSandboxExists(id).then((ok) => ok && this.onSandboxReady(id));
@@ -411,7 +432,7 @@ export class Sessions {
             this.onSessionReattached(agent.id);
           }
           if (agent.cli === "codex") await this.watchCodexScreen(agent.id, name);
-          await this.reconcileFromScreen(agent.id, agent.cli, name);
+          await this.reconcileFromScreen(agent.id, runtimeOf(agent.cli).program === "claude" ? "claude" : agent.cli, name);
         } else if (st.session.state === "running") {
           this.detach(agent.id);
           this.closeShell(agent.id);
@@ -503,7 +524,7 @@ export class Sessions {
   // ------------------------------------------------------------ setup helper
 
   async recheckSetup() {
-    this.hub.setSetup(await runSetupChecks(this.hub.repo, this.hub.snap.config.team, this.hub.snap.config.workflow.deliverable === "pull-request"));
+    this.hub.setSetup(await runSetupChecks(this.hub.repo, this.hub.snap.config, this.hub.snap.config.workflow.deliverable === "pull-request"));
   }
 
   /** Runs a program in a terminal the browser can watch and type into (id must start with "setup:"). */
@@ -521,8 +542,30 @@ export class Sessions {
     });
   }
 
+  /**
+   * Adds DeepSeek to Docker Sandboxes' model providers (keeping any others) and turns on model
+   * selection, which is experimental in sbx. Runs sbx directly, one step at a time, in a visible terminal.
+   */
+  async configureDeepseekProvider() {
+    const id = "setup:deepseek-provider";
+    if (this.fixes.has(id)) return;
+    const current = await run("sbx", ["settings", "get", "model.providers"], { timeoutMs: 15_000 });
+    const providers = { ...parseProviders(current.stdout), deepseek: DEEPSEEK_SBX_PROVIDER };
+    const steps: string[][] = [
+      ["settings", "set", "platform.allowExperimentalFeatures", "true"],
+      ["settings", "set", "feature.model", "true"],
+      ["settings", "set", "model.providers", JSON.stringify(providers)],
+    ];
+    const next = (i: number) => (code: number) => {
+      if (code !== 0 || i >= steps.length) return void this.recheckSetup();
+      this.runTerminal(id, "sbx", steps[i], next(i + 1));
+    };
+    next(0)(0);
+  }
+
   /** Runs a check's fix command in a visible terminal. Only commands HQ itself suggested. */
   runFix(checkId: SetupCheckId) {
+    if (checkId === "deepseek-provider") return void this.configureDeepseekProvider();
     const check = this.hub.snap.setup.checks.find((c) => c.id === checkId);
     if (!check?.fix?.runnable || !check.fix.command) return;
     const id = `setup:${checkId}`;

@@ -12,6 +12,7 @@ import type { Hub } from "./hub";
 import { run } from "./lib/exec";
 import { parseCliJson } from "./lib/json";
 import { projectHome, sessionName } from "./paths";
+import { mcpFor } from "../src/data/models";
 
 export const MCP_NAME = /^[a-z0-9][a-z0-9_-]{0,39}$/;
 
@@ -138,12 +139,14 @@ export class SbxMcp {
       const agent = this.hub.cfg(agentId);
       if (!agent) return;
       const want = [...new Set(names.map((n) => n.trim().toLowerCase()).filter((n) => MCP_NAME.test(n)))];
-      const before = agent.mcp ?? [];
+      const before = mcpFor(agent, this.hub.snap.config);
       agent.mcp = want;
       this.hub.configChanged();
+      // What the agent gets is its own picks plus its role's tools.
+      const now = mcpFor(agent, this.hub.snap.config);
       const running = agent.mode === "sandbox" && this.hub.status(agentId)?.session.state === "running";
-      if (running) await this.attach(agentId, want.filter((n) => !before.includes(n)));
-      const stuck = before.filter((n) => !want.includes(n) && this.state.attached[agentId]?.includes(n));
+      if (running) await this.attach(agentId, now.filter((n) => !before.includes(n)));
+      const stuck = before.filter((n) => !now.includes(n) && this.state.attached[agentId]?.includes(n));
       if (stuck.length)
         this.hub.activity(
           "config",
@@ -154,12 +157,25 @@ export class SbxMcp {
     });
   }
 
-  /** The agent's sandbox just started: attach its servers. */
+  /** The agent's sandbox just started: attach its servers and its role's tools. */
   attachAll(agentId: string) {
     return this.serial(async () => {
       const agent = this.hub.cfg(agentId);
-      if (!agent || agent.mode !== "sandbox" || !agent.mcp?.length) return;
-      await this.attach(agentId, agent.mcp);
+      const names = agent ? mcpFor(agent, this.hub.snap.config) : [];
+      if (!agent || agent.mode !== "sandbox" || !names.length) return;
+      await this.attach(agentId, names);
+      this.publish();
+    });
+  }
+
+  /** A role's tools changed: attach what's new to its agents whose sandboxes are running. */
+  syncRole(roleId: string) {
+    return this.serial(async () => {
+      for (const agent of this.hub.snap.config.team) {
+        if (agent.roleId !== roleId || agent.mode !== "sandbox" || this.hub.status(agent.id)?.session.state !== "running") continue;
+        const missing = mcpFor(agent, this.hub.snap.config).filter((n) => !this.state.attached[agent.id]?.includes(n));
+        if (missing.length) await this.attach(agent.id, missing);
+      }
       this.publish();
     });
   }

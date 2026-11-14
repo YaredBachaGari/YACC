@@ -9,6 +9,7 @@ import { stackRoleMd } from "../src/data/stack";
 import { CEO_ID, type AgentConfig, type HqConfig } from "../src/data/types";
 import { can, managerName, roleOf, toolsFor } from "../src/data/roles";
 import { describeFlow } from "../src/data/workflow";
+import { PERPLEXITY_MCP, mcpFor } from "../src/data/models";
 
 /** Team MCP config, passed with `claude --mcp-config` (so the project's own .mcp.json is untouched). */
 export const MCP_CONFIG = ".claude/hq-mcp.json";
@@ -47,7 +48,7 @@ export async function adoptRoleFile(dir: string): Promise<string | null> {
 export const MARK = "# yacc-hook";
 /** Same marker for node hook commands (cmd and PowerShell have no `#` comments). */
 const MARK_ARG = "--yacc-hook";
-const isOurs = (command: string) => command.includes(MARK) || command.includes(MARK_ARG);
+export const isOurs = (command: string) => command.includes(MARK) || command.includes(MARK_ARG);
 
 /**
  * Hooks run where the agent runs. Sandboxes are Linux, so they use sh + curl;
@@ -145,6 +146,11 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
     "You can message any teammate with send_message, whatever the reporting lines.",
     "When you need the CEO to approve or decide something, or to do something outside your sandbox (create an account, database or API key, change a setting in a dashboard, put a value in your env file), call ask_user with a short title and clear steps, then keep working on what you can. You don't need to go through the lead for this. Never put secret values in it; name the variable instead. Variables reach you through HQ: ask the user to add NAME to your App variables in HQ (Settings → Sandbox → App variables) and restart you; there is no env file inside your sandbox to edit.",
   );
+  // A research tool the role was given (Settings → Roles → Tools).
+  if (mcpFor(agent, cfg).includes(PERPLEXITY_MCP.name))
+    rules.push(
+      "You have Perplexity (MCP server `perplexity`) for research on the live web: perplexity_search for sources, perplexity_ask for a quick answer with citations, perplexity_research for a deep report. Use it instead of guessing about anything current, and keep the source links in what you share.",
+    );
   // Sandboxes block most sites; the agent asks instead of working around it.
   if (agent.mode === "sandbox")
     rules.push(
@@ -227,25 +233,33 @@ export function writeSettings(dir: string, agent: AgentConfig, port: number, tok
     hooks[event] = [...kept, event === "PreToolUse" || event === "PostToolUse" ? { matcher: "*", hooks: ours } : { hooks: ours }];
   }
   // Let the agent use the Team MCP without a permission prompt for every call.
-  const allow = new Set([...(settings.permissions?.allow ?? []), "mcp__hq"]);
+  // Perplexity (a role tool) is read-only research, so it needs no prompt either.
+  const allow = new Set([...(settings.permissions?.allow ?? []), "mcp__hq", "mcp__perplexity"]);
   agentWrite(dir, file, JSON.stringify({ ...settings, hooks, permissions: { ...(settings.permissions ?? {}), allow: [...allow] } }, null, 2) + "\n");
 }
 
+/** Extra MCP servers HQ writes for a Local-mode agent (in a sandbox, sbx's gateway provides them). */
+export interface LocalTools {
+  /** Perplexity with its key from the session's environment (Claude Code expands ${VAR} here). */
+  perplexity?: boolean;
+}
+
 /** Team MCP config: HQ's URL plus this agent's identity and token. */
-export function writeMcpConfig(dir: string, agent: AgentConfig, port: number, token: string) {
+export function writeMcpConfig(dir: string, agent: AgentConfig, port: number, token: string, tools: LocalTools = {}) {
   const config = {
     mcpServers: {
       hq: { type: "http", url: `${hqUrl(agent, port)}/mcp`, headers: { Authorization: `Bearer ${token}`, "X-HQ-Agent": agent.id } },
+      ...(tools.perplexity ? { [PERPLEXITY_MCP.name]: { type: "http", url: PERPLEXITY_MCP.url, headers: { Authorization: "Bearer ${PERPLEXITY_API_KEY}" } } } : {}),
     },
   };
   agentWrite(dir, MCP_CONFIG, JSON.stringify(config, null, 2) + "\n", { mode: 0o600 });
 }
 
 /** Claude Code's files: the role (loaded by the SessionStart hook), hooks, and the Team MCP config. */
-export function writeClaudeFiles(dir: string, agent: AgentConfig, cfg: HqConfig, token: string, extras: RoleExtras = {}) {
+export function writeClaudeFiles(dir: string, agent: AgentConfig, cfg: HqConfig, token: string, extras: RoleExtras = {}, tools: LocalTools = {}) {
   agentWrite(dir, ROLE_FILE, roleMd(agent, cfg, extras));
   writeSettings(dir, agent, cfg.project.hqPort, token);
-  writeMcpConfig(dir, agent, cfg.project.hqPort, token);
+  writeMcpConfig(dir, agent, cfg.project.hqPort, token, tools);
   if (hookScriptFor(agent, dir)) writeHookScript(dir);
   excludeFromGit(dir, HQ_FILES);
 }

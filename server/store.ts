@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, watch, writeFi
 import { join } from "node:path";
 import { parse as parseYaml, stringify as toYaml } from "yaml";
 import { z } from "zod";
-import { CEO_ID, LEAD_ROLE_ID, PERMISSIONS, type AgentConfig, type Board, type HqConfig, type RoleConfig, type SandboxSettings, type Task } from "../src/data/types";
+import { AGENT_CLIS, CEO_ID, LEAD_ROLE_ID, PERMISSIONS, PROVIDER_IDS, type AgentConfig, type Board, type HqConfig, type RoleConfig, type SandboxSettings, type Task } from "../src/data/types";
 import { LEAD_NAME, WORKER_NAMES } from "../src/data/names";
 import { defaultAutonomy, DEFAULT_CEO_NAME, DEFAULT_MAX_AGENTS, DEVELOPER_INSTRUCTIONS, defaultRoles, freeRoleId, normalizeConfig, roleSlug } from "../src/data/roles";
 import { codingStages, defaultWorkflowParts } from "../src/data/workflow";
@@ -106,7 +106,7 @@ const agentSchema = z.object({
   role: z.string().min(1),
   /** An agent id or "ceo". Left out: the lead (and the lead always reports to the CEO). */
   reportsTo: z.string().optional(),
-  cli: z.enum(["claude", "codex"]).default("claude"),
+  cli: z.enum(AGENT_CLIS).default("claude"),
   model: z.string().default(""),
   mode: z.enum(["sandbox", "local"]).default("sandbox"),
   color: z.string().default("#29adff"),
@@ -125,8 +125,10 @@ const roleSchema = z.object({
   can: z.array(z.enum(PERMISSIONS)).default([]),
   /** A file under .yacc/ (roles/<id>.md), or the text itself. */
   instructions: z.string().default(""),
-  cli: z.enum(["claude", "codex"]).optional(),
+  cli: z.enum(AGENT_CLIS).optional(),
   model: z.string().optional(),
+  /** MCP servers every agent with this role gets, e.g. [perplexity]. */
+  tools: z.array(z.string()).optional(),
 });
 
 const fileSchema = z.object({
@@ -165,6 +167,8 @@ const fileSchema = z.object({
     deploy: z.object({ enabled: z.boolean(), tool: z.enum(["instacloud", "vercel", "custom"]), command: z.string().default(""), perAgentEnvironments: z.boolean().default(false) }),
   }),
   stack: z.unknown().optional(),
+  /** Sign-in per model provider. Keys never go here: they live in Docker Sandboxes' secret store. */
+  providers: z.partialRecord(z.enum(PROVIDER_IDS), z.object({ auth: z.enum(["subscription", "api-key"]) })).optional(),
 });
 
 /** Thrown for a config.yml that can't be used; the message says what to fix. */
@@ -186,7 +190,7 @@ export function serializeConfig(cfg: HqConfig): { yaml: string; files: Record<st
   const roles: Record<string, unknown> = {};
   for (const r of cfg.roles) {
     files[roleFile(r.id)] = r.instructions.trim() + "\n";
-    roles[r.id] = { title: r.title, can: r.can, instructions: roleFile(r.id), ...(r.cli ? { cli: r.cli } : {}), ...(r.model ? { model: r.model } : {}) };
+    roles[r.id] = { title: r.title, can: r.can, instructions: roleFile(r.id), ...(r.cli ? { cli: r.cli } : {}), ...(r.model ? { model: r.model } : {}), ...(r.tools?.length ? { tools: r.tools } : {}) };
   }
   // The path is machine-specific; teammates get their own.
   const { path: _path, ...project } = cfg.project;
@@ -216,6 +220,7 @@ export function serializeConfig(cfg: HqConfig): { yaml: string; files: Record<st
     })),
     workflow: cfg.workflow,
     ...(cfg.stack ? { stack: cfg.stack } : {}),
+    ...(cfg.providers && Object.keys(cfg.providers).length ? { providers: cfg.providers } : {}),
   };
   return { yaml: HEADER + toYaml(doc, { lineWidth: 0 }), files };
 }
@@ -246,7 +251,7 @@ export function parseConfig(text: string, readFile: (relPath: string) => string 
   }
   const roles: RoleConfig[] = Object.entries(f.roles).map(([id, r]) => {
     const text = isRoleFileRef(r.instructions) ? (readFile(r.instructions.trim()) ?? "") : r.instructions;
-    return { id: roleSlug(id), title: r.title, can: r.can, instructions: text.trim(), ...(r.cli ? { cli: r.cli } : {}), ...(r.model ? { model: r.model } : {}) };
+    return { id: roleSlug(id), title: r.title, can: r.can, instructions: text.trim(), ...(r.cli ? { cli: r.cli } : {}), ...(r.model ? { model: r.model } : {}), ...(r.tools?.length ? { tools: r.tools } : {}) };
   });
   const config: HqConfig = {
     project: { id: slugify(f.project.id ?? f.project.name), name: f.project.name, repo: f.project.repo, path: "", hqPort: f.project.hqPort, ...(f.project.exportPlan !== undefined ? { exportPlan: f.project.exportPlan } : {}), ...(f.project.officeName ? { officeName: f.project.officeName } : {}) },
@@ -276,6 +281,7 @@ export function parseConfig(text: string, readFile: (relPath: string) => string 
     })),
     workflow: { ...f.workflow, stages: f.workflow.stages.map((st) => ({ ...st, id: st.id ?? roleSlug(st.name) })) },
     ...(f.stack ? { stack: f.stack as HqConfig["stack"] } : {}),
+    ...(f.providers && Object.keys(f.providers).length ? { providers: f.providers } : {}),
   };
   // An agent whose role isn't defined is a typo worth stopping for, not something to guess at.
   for (const a of config.team)

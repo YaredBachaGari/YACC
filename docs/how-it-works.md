@@ -14,6 +14,7 @@ What HQ does behind the office: where agents work, how they talk, what reaches G
 - [App variables and keys](#app-variables-and-keys)
 - [Settings you can change any time](#settings-you-can-change-any-time)
 - [What HQ saves, and where](#what-hq-saves-and-where)
+- [Models](#models)
 - [The office](#the-office)
 - [Windows](#windows)
 - [Keyboard shortcuts](#keyboard-shortcuts)
@@ -22,7 +23,7 @@ What HQ does behind the office: where agents work, how they talk, what reaches G
 
 - **The lead** plans and assigns. It creates boards (for example one per phase), splits the work into tasks and gives each task to a free worker. It never writes app code.
 - **Workers** build. One task means one branch and one pull request. A worker edits only the files its task lists and asks the lead if it needs more.
-- Each agent runs **Claude Code** or **Codex**, in a **Sandbox** (the default) or in **Local** mode. Set this per agent in Settings → Team.
+- Each agent runs on a **model**: Claude (Claude Code), OpenAI (Codex), Gemini (Gemini CLI) or DeepSeek (Claude Code pointed at DeepSeek's API). It runs in a **Sandbox** (the default) or in **Local** mode. Set both per agent in Settings → Team, or a default per role in Settings → Roles. See [Models](#models).
 
 New teams get names from The Office: Michael leads, then Dwight, Jim, Pam and so on. Rename them any time.
 
@@ -136,6 +137,32 @@ HQ never stores key values and never reads your env files.
 
 **Remove a project:** delete each agent in Settings → Team (this removes its sandbox and, if you choose, its folder), then delete `~/.yacc/<project>`.
 
+## Models
+
+Each agent runs on one model, in the program made for it:
+
+| Model | Program | Sign in with | In a sandbox |
+| --- | --- | --- | --- |
+| Claude | Claude Code | Your Claude subscription, or an Anthropic API key | Subscription: sign in in the agent's terminal the first time. Key: `sbx secret set anthropic` |
+| OpenAI | Codex | Your ChatGPT subscription, or an OpenAI API key | `sbx secret set openai --oauth` (subscription) or `sbx secret set openai` (key) |
+| Gemini | Gemini CLI | An API key from Google AI Studio, or Sign in with Google (Local mode only) | `sbx secret set google` |
+| DeepSeek | Claude Code, pointed at DeepSeek's API | API key only | YACC adds DeepSeek to Docker Sandboxes' model providers, then `sbx secret set deepseek` |
+
+**Settings → Models** sets how YACC signs in to each provider, and shows what each still needs, with a **Run in terminal** button where YACC can do it for you. The Setup checklist shows the same steps, only for the models your team uses.
+
+- **Keys never go in `config.yml`.** For sandboxes they live in Docker's secret store, and its proxy adds them to requests, so a key never enters a sandbox. In Local mode, the program reads the key from the environment YACC was started from (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `DEEPSEEK_API_KEY`, `PERPLEXITY_API_KEY`). Set it in your shell profile, then restart YACC. YACC passes it to that agent's session through an owner-only file, never on the command line.
+- **Model names.** Leave the model empty for the program's default, or pick one: `opus`, `sonnet` or `haiku` for Claude; `gpt-5.5` or `gpt-5.4-mini` for Codex; `pro`, `flash` or a Gemini model id for Gemini; `deepseek-v4-pro` (the default) or `deepseek-v4-flash` for DeepSeek. Any name the program accepts works.
+- **DeepSeek in a sandbox** uses Docker Sandboxes' model selection, which sbx still marks experimental. The setup step turns it on and adds a `deepseek` provider (`https://api.deepseek.com/anthropic/v1`, Anthropic format), keeping any providers you already have. In Local mode, Claude Code talks to `https://api.deepseek.com/anthropic` directly, as DeepSeek documents.
+- **Gemini** gets its role as a context file next to the project's own `GEMINI.md`, the team's MCP server, and hooks so the office shows when it works and finishes. The first time it starts, Gemini CLI may ask you to trust the folder and allow YACC's hooks: allow both. YACC writes these into `.gemini/settings.json` in the agent's own copy (git-excluded); a repo that commits that file can't run Gemini agents.
+
+### The adapter contract
+
+A program can join the team when YACC can: give it the role (instructions), connect it to the team's MCP server over HTTP, hear when a turn starts and stops (hooks, and at the end of a turn take `{"decision":"block","reason":…}` to carry on with new messages), and launch it in a Docker Sandbox and on your machine. `server/adapters.ts` has one adapter per model; the catalog of providers, sign-in modes and model names is `src/data/models.ts`.
+
+### Research with Perplexity
+
+**Settings → Models → Research** adds Perplexity's own MCP server with your API key (stored by Docker Sandboxes), then lets you tick which roles get it. Every agent with a ticked role gets `perplexity_search`, `perplexity_ask` and `perplexity_research`, and is told in its role to use them for anything current and to keep the sources. Running sandboxes get it right away. Local-mode agents need `PERPLEXITY_API_KEY` where YACC starts. Any other MCP server can be given to a role the same way, in Settings → Roles → Tools.
+
 ## The office
 
 The **modern office** (the default) is drawn from your settings:
@@ -194,11 +221,18 @@ ceo: { name: Abuti }
 limits: { maxAgents: 5 }
 roles:
   lead: { title: Producer, can: [plan, assign, review, hire], instructions: roles/lead.md }
-  writer: { title: Writer, can: [work], instructions: roles/writer.md }
+  writer: { title: Writer, can: [work], instructions: roles/writer.md, cli: claude, model: sonnet, tools: [perplexity] }
 team:
   - { id: maya, name: Maya, role: lead }
   - { id: ada, name: Ada, role: writer }     # reportsTo defaults to the lead
+  - { id: gus, name: Gus, role: writer, cli: gemini, model: pro }
+  - { id: dee, name: Dee, role: writer, cli: deepseek, model: deepseek-v4-flash }
+providers:                                   # how YACC signs in; keys never go here
+  anthropic: { auth: subscription }
+  google: { auth: api-key }
 ```
+
+`cli` is the agent's model: `claude`, `codex`, `gemini` or `deepseek`. A role's `cli` and `model` are the defaults for new agents with that role, hires included; its `tools` are MCP servers every agent with the role gets. `providers` takes `subscription` or `api-key` for `anthropic`, `openai` and `google`; DeepSeek and Perplexity are API key only.
 
 Boards and tasks stay in `.yacc/plan.json`: they are data, not settings. Secrets never go in either file.
 

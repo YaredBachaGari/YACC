@@ -1,6 +1,6 @@
 // Browser commands → server actions. Names match OfficeDataSource methods.
 
-import { CEO_ID, LEAD_ROLE_ID, PERMISSIONS, SERVICE_KEYS, type AgentCli, type AgentConfig, type AgentPatch, type NewRoleInput, type OrgPatch, type ProjectMemory, type ReviewTool, type RolePatch, type WelcomeInput, type NewMcpServer, type Board, type NewAgentInput, type ProjectConfig, type RemoveAgentOptions, type RoleConfig, type SandboxSettings, type SetupCheckId, type WorkflowPatch } from "../src/data/types";
+import { AGENT_CLIS, CEO_ID, LEAD_ROLE_ID, PERMISSIONS, PROVIDER_IDS, SERVICE_KEYS, type AgentCli, type AgentConfig, type AgentPatch, type NewRoleInput, type OrgPatch, type ProjectMemory, type ReviewTool, type RolePatch, type WelcomeInput, type NewMcpServer, type Board, type NewAgentInput, type ProjectConfig, type RemoveAgentOptions, type RoleConfig, type SandboxSettings, type SetupCheckId, type WorkflowPatch } from "../src/data/types";
 import { DEVELOPER_INSTRUCTIONS, MAX_AGENTS_CEILING, WORKER_BASE_INSTRUCTIONS, findRole, freeRoleId, leadOf } from "../src/data/roles";
 import { LEAD_NAME, OFFICE_NAME_MAX } from "../src/data/names";
 import { STACK_CATEGORIES, stackSkills, stackTool, type StackChoice, type StackConfig } from "../src/data/stack";
@@ -18,6 +18,7 @@ import type { Team } from "./team";
 import type { Briefings } from "./briefings";
 import { listTemplates, saveTemplate } from "./templates";
 import { BUILT_IN_TEMPLATES, libraryCard, roleFromCard } from "../src/data/templates";
+import { PROVIDERS } from "../src/data/models";
 import type { Memory } from "./memory";
 import { mergeByNotice } from "./githubSync";
 
@@ -99,7 +100,7 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx
       const agent = teamOps.add({
         name: str(input.name, 40),
         roleId: role.id,
-        cli: input.cli === "codex" ? "codex" : input.cli === "claude" ? "claude" : undefined,
+        cli: AGENT_CLIS.find((c) => c === input.cli),
         model: typeof input.model === "string" ? str(input.model, 60) : undefined,
         mode: input.mode === "local" ? "local" : "sandbox",
       });
@@ -123,7 +124,7 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx
         if (holder) holder.desk = agent.desk;
         agent.desk = p.desk;
       }
-      if ((p.cli === "claude" || p.cli === "codex") && p.cli !== agent.cli) {
+      if (AGENT_CLIS.some((c) => c === p.cli) && p.cli && p.cli !== agent.cli) {
         agent.cli = p.cli;
         // Model names don't carry over between CLIs.
         if (typeof p.model !== "string") agent.model = "";
@@ -176,13 +177,23 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx
       if (typeof p.title === "string" && p.title.trim()) role.title = str(p.title, 40).trim();
       if (Array.isArray(p.can)) role.can = PERMISSIONS.filter((x) => p.can!.includes(x));
       if (typeof p.instructions === "string") role.instructions = str(p.instructions, 20_000);
-      if (p.cli === "claude" || p.cli === "codex") role.cli = p.cli;
+      const cli = AGENT_CLIS.find((c) => c === p.cli);
+      if (cli) role.cli = cli;
       else if (p.cli === null || (p.cli as unknown) === "") delete role.cli;
       if (typeof p.model === "string") {
         if (p.model.trim()) role.model = str(p.model, 60).trim();
         else delete role.model;
       }
+      const toolsBefore = role.tools ?? [];
+      if (Array.isArray(p.tools)) {
+        const tools = [...new Set(p.tools.slice(0, 20).map((t) => str(t, 40).trim().toLowerCase()).filter(Boolean))];
+        if (tools.length) role.tools = tools;
+        else delete role.tools;
+      }
       hub.configChanged(); // the lead role keeps plan + assign (normalizeConfig)
+      // A new tool reaches running agents with this role now; a removed one stays until their sandbox is recreated.
+      if ((role.tools ?? []).some((t) => !toolsBefore.includes(t))) void mcp.syncRole(role.id);
+      if ((role.tools ?? []).join() !== toolsBefore.join()) void sessions.recheckSetup();
     },
 
     removeRole: (id) => {
@@ -196,6 +207,16 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx
       hub.configChanged();
       removeRoleFile(hub.repo.root, role.id);
       hub.activity("config", null, `Removed the ${role.title} role.`);
+    },
+
+    setProviderAuth: (provider, auth) => {
+      const id = PROVIDER_IDS.find((x) => x === provider);
+      if (!id || (auth !== "subscription" && auth !== "api-key") || !PROVIDERS[id].auth.includes(auth)) return;
+      const cfg = hub.snap.config;
+      cfg.providers = { ...(cfg.providers ?? {}), [id]: { auth } };
+      hub.configChanged();
+      hub.activity("config", null, `${PROVIDERS[id].label}: ${auth === "api-key" ? "API key" : "your subscription"}. Restart its agents to switch.`);
+      void sessions.recheckSetup();
     },
 
     updateOrg: (patch) => {
@@ -323,7 +344,7 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx
     completeWelcome: async (raw) => {
       if (!hub.snap.welcome) return;
       const input = (raw ?? {}) as Partial<WelcomeInput>;
-      const cli = (c: unknown): AgentCli => (c === "codex" ? "codex" : "claude");
+      const cli = (c: unknown): AgentCli => AGENT_CLIS.find((x) => x === c) ?? "claude";
       const used = new Set<string>();
       const cfg = hub.snap.config;
       // The template gives the roles, the workflow and the defaults; the welcome screen gives the people.

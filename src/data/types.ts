@@ -25,10 +25,30 @@ export interface SandboxSettings {
 
 export type AgentMode = "sandbox" | "local";
 
-/** Which coding agent CLI runs in the sandbox. */
-export type AgentCli = "claude" | "codex";
+/**
+ * Which model runs the agent, and so which agent program (runtime) it runs in.
+ * Saved as `cli:` in config.yml. DeepSeek runs in Claude Code, pointed at DeepSeek's API.
+ * The catalog of each one (provider, models, sign-in) is in src/data/models.ts.
+ */
+export type AgentCli = "claude" | "codex" | "gemini" | "deepseek";
+export const AGENT_CLIS = ["claude", "codex", "gemini", "deepseek"] as const satisfies readonly AgentCli[];
 
-export const CLI_LABEL: Record<AgentCli, string> = { claude: "Claude Code", codex: "Codex" };
+export const CLI_LABEL: Record<AgentCli, string> = { claude: "Claude Code", codex: "Codex", gemini: "Gemini CLI", deepseek: "DeepSeek (in Claude Code)" };
+
+/** Who provides the model. Perplexity is a research tool, not a model an agent runs on. */
+export type ProviderId = "anthropic" | "openai" | "google" | "deepseek" | "perplexity";
+export const PROVIDER_IDS = ["anthropic", "openai", "google", "deepseek", "perplexity"] as const satisfies readonly ProviderId[];
+
+/**
+ * How YACC signs in to a provider. subscription: you sign in with your own account (Claude, ChatGPT,
+ * Google) in the provider's own program. api-key: a key kept in Docker Sandboxes' secret store (or, in
+ * Local mode, in the environment YACC starts from). Keys are never saved in config.yml.
+ */
+export type AuthMode = "subscription" | "api-key";
+export const AUTH_LABEL: Record<AuthMode, string> = { subscription: "Your subscription (sign in)", "api-key": "API key" };
+
+/** Sign-in choice per provider (config.yml `providers:`). Providers left out use their default. */
+export type ProvidersConfig = Partial<Record<ProviderId, { auth: AuthMode }>>;
 
 /** What a role may do. The Team MCP offers each agent only the tools its role allows. */
 export const PERMISSIONS = ["plan", "assign", "work", "review", "approve", "hire"] as const;
@@ -58,6 +78,8 @@ export interface RoleConfig {
   /** Defaults for new agents with this role ("" / undefined = no preference). */
   cli?: AgentCli;
   model?: string;
+  /** MCP servers (names in Docker Sandboxes' registry, e.g. "perplexity") every agent with this role gets. */
+  tools?: string[];
 }
 
 /** The human. Always the head of the org chart. */
@@ -205,6 +227,8 @@ export interface HqConfig {
   workflow: WorkflowConfig;
   /** Optional: what the project is built with (plan 009). */
   stack?: StackConfig;
+  /** How each model provider is signed in to. Left out: each provider's default (see models.ts). */
+  providers?: ProvidersConfig;
 }
 
 /** An agent asked to reach a domain its sandbox blocks (Team MCP `request_access`). */
@@ -356,7 +380,29 @@ export interface RemoveAgentOptions {
 
 // ---------------------------------------------------------------- Setup
 
-export type SetupCheckId = "os" | "sbx" | "sbx-login" | "sbx-policy" | "tmux" | "gh" | "gh-remote" | "github-secret" | "claude" | "codex" | "openai-secret";
+export type SetupCheckId =
+  | "os"
+  | "sbx"
+  | "sbx-login"
+  | "sbx-policy"
+  | "tmux"
+  | "gh"
+  | "gh-remote"
+  | "github-secret"
+  | "claude"
+  | "codex"
+  | "gemini"
+  | "openai-secret"
+  | "anthropic-secret"
+  | "google-secret"
+  | "deepseek-provider"
+  | "deepseek-secret"
+  | "anthropic-env"
+  | "openai-env"
+  | "google-env"
+  | "gemini-login"
+  | "deepseek-env"
+  | "perplexity-env";
 export type SetupStatus = "ok" | "missing" | "unsupported" | "warning";
 
 export interface SetupFix {
@@ -538,7 +584,7 @@ export type AgentPatch = Partial<
   Pick<AgentConfig, "name" | "roleId" | "reportsTo" | "cli" | "model" | "mode" | "color" | "skills" | "roleMd" | "workspacePath" | "desk">
 >;
 
-export type RolePatch = Partial<Pick<RoleConfig, "title" | "can" | "instructions" | "cli" | "model">>;
+export type RolePatch = Partial<Pick<RoleConfig, "title" | "can" | "instructions" | "cli" | "model" | "tools">>;
 
 export interface NewRoleInput {
   title: string;
