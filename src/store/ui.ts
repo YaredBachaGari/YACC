@@ -10,6 +10,17 @@ export type DrawerState =
   | { kind: "terminal" }
   | null;
 
+/** How the office is drawn: the modern illustrated office, or the classic pixel one. Saved in this browser. */
+export type OfficeStyle = "modern" | "classic";
+const OFFICE_STYLE_KEY = "yacc.officeStyle";
+function savedOfficeStyle(): OfficeStyle {
+  try {
+    return localStorage.getItem(OFFICE_STYLE_KEY) === "classic" ? "classic" : "modern";
+  } catch {
+    return "modern";
+  }
+}
+
 export type AgentTab = "terminal" | "shell" | "task" | "sandbox" | "messages";
 export type SettingsTab = "team" | "roles" | "memory" | "workflow" | "stack" | "mcp" | "sandbox" | "boards" | "project";
 
@@ -30,6 +41,7 @@ export interface HoverInfo {
 
 interface UiState {
   drawer: DrawerState;
+  officeStyle: OfficeStyle;
   settings: { tab: SettingsTab; agentId?: string } | null;
   hover: HoverInfo | null;
   focus: { target: FocusTarget; nonce: number } | null;
@@ -62,6 +74,7 @@ function savedWidth(): number {
 
 export const useUi = create<UiState>(() => ({
   drawer: null,
+  officeStyle: savedOfficeStyle(),
   settings: null,
   hover: null,
   focus: null,
@@ -93,6 +106,14 @@ export const ui = {
   },
   openActions() {
     useUi.setState({ drawer: { kind: "actions" } });
+  },
+  setOfficeStyle(style: OfficeStyle) {
+    try {
+      localStorage.setItem(OFFICE_STYLE_KEY, style);
+    } catch {
+      // Private mode: it still applies until the page reloads.
+    }
+    useUi.setState({ officeStyle: style });
   },
   openBriefings() {
     useUi.setState({ drawer: { kind: "briefings" } });

@@ -117,6 +117,12 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx
       if (typeof p.roleId === "string" && agent.roleId !== LEAD_ROLE_ID && p.roleId !== LEAD_ROLE_ID && cfg.roles.some((r) => r.id === p.roleId)) agent.roleId = p.roleId;
       if (typeof p.reportsTo === "string" && agent.roleId !== LEAD_ROLE_ID && (p.reportsTo === CEO_ID || (p.reportsTo !== agent.id && hub.cfg(p.reportsTo)))) agent.reportsTo = p.reportsTo;
       if (p.mode === "sandbox" || p.mode === "local") agent.mode = p.mode;
+      // Moving to a desk someone has: they swap.
+      if (typeof p.desk === "number" && Number.isInteger(p.desk) && p.desk >= 0 && p.desk < MAX_AGENTS_CEILING && agent.roleId !== LEAD_ROLE_ID && p.desk !== agent.desk) {
+        const holder = cfg.team.find((a) => a !== agent && a.desk === p.desk);
+        if (holder) holder.desk = agent.desk;
+        agent.desk = p.desk;
+      }
       if ((p.cli === "claude" || p.cli === "codex") && p.cli !== agent.cli) {
         agent.cli = p.cli;
         // Model names don't carry over between CLIs.

@@ -87,6 +87,9 @@ function AgentRow({ agent, expanded, onToggle, onRemove }: { agent: AgentConfig;
   const team = useOffice((s) => s.snap?.config.team) ?? [];
   const ceoName = useOffice((s) => s.snap?.config.ceo.name) ?? "CEO";
   const hirer = agent.hiredBy ? team.find((a) => a.id === agent.hiredBy)?.name : null;
+  const maxAgents = useOffice((s) => s.snap?.config.limits.maxAgents) ?? 8;
+  // One desk per possible teammate: the office has room up to the headcount limit.
+  const deskCount = Math.max(maxAgents - 1, team.filter((a) => !a.isLead).length);
   return (
     <div className="border-[3px] border-ink bg-white">
       <div className="grid grid-cols-[40px_1fr_1fr_150px_130px_auto] items-end gap-2.5 p-2.5">
@@ -161,6 +164,21 @@ function AgentRow({ agent, expanded, onToggle, onRemove }: { agent: AgentConfig;
               </select>
             )}
           </Field>
+          {!agent.isLead && (
+            <Field label="Desk" hint="Where they sit in the office. Picking a taken desk swaps the two.">
+              <select className="field" value={agent.desk ?? 0} onChange={(e) => set({ desk: Number(e.target.value) })} aria-label={`${agent.name}'s desk`}>
+                {Array.from({ length: Math.max(deskCount, (agent.desk ?? 0) + 1) }, (_, d) => {
+                  const holder = team.find((a) => a.id !== agent.id && a.desk === d);
+                  return (
+                    <option key={d} value={d}>
+                      Desk {d + 1}
+                      {holder ? ` (${holder.name}'s: swap)` : ""}
+                    </option>
+                  );
+                })}
+              </select>
+            </Field>
+          )}
           <Field label="Colour">
             <div className="flex flex-wrap gap-1.5">
               {agentPalette.map((c) => (

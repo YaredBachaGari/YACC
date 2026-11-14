@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { ModernOffice } from "./officeModern/ModernOffice";
 import { OfficeCanvas } from "./office/OfficeCanvas";
 import { connectOffice, useOffice } from "./store/office";
 import { ui, useUi } from "./store/ui";
@@ -66,11 +67,12 @@ export function App() {
   useSetupPrompt();
   const ready = useOffice((s) => s.snap !== null);
   const setupOpen = useUi((s) => s.setupOpen);
+  const officeStyle = useUi((s) => s.officeStyle);
   const welcome = useOffice((s) => s.live && !!s.snap?.welcome);
 
   return (
     <>
-      <OfficeCanvas />
+      {officeStyle === "classic" ? <OfficeCanvas /> : <ModernOffice />}
       <ConnectionBanner />
       {ready && (
         <>

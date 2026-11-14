@@ -14,6 +14,7 @@ What HQ does behind the office: where agents work, how they talk, what reaches G
 - [App variables and keys](#app-variables-and-keys)
 - [Settings you can change any time](#settings-you-can-change-any-time)
 - [What HQ saves, and where](#what-hq-saves-and-where)
+- [The office](#the-office)
 - [Windows](#windows)
 - [Keyboard shortcuts](#keyboard-shortcuts)
 
@@ -134,6 +135,19 @@ HQ never stores key values and never reads your env files.
 | `~/.yacc/<project>/` | Agents' folders, app variables, action items and HQ's own records | No, it's outside your repo, on your machine only |
 
 **Remove a project:** delete each agent in Settings → Team (this removes its sandbox and, if you choose, its folder), then delete `~/.yacc/<project>`.
+
+## The office
+
+The **modern office** (the default) is drawn from your settings:
+
+- **Your office** is the glass room at the top left. Click it to open Briefings; a red badge counts unread ones.
+- **The lead** sits next to you, by the bookshelf.
+- **Desks.** Every other agent has a numbered desk on the open floor. The floor shows as many desks as your headcount limit allows, so a free desk is room for a hire. Pick a desk for an agent in Settings → Team; picking a taken desk swaps the two. In `config.yml` an agent's desk is `desk: 3` (counted from 1). Leave it out and HQ gives the lowest free desk.
+- **States.** The laptop logo and the dot on the name tag show what the agent is doing: green working (hands typing), orange waiting on you (a hand up and a "!"), blue in review, a tick when a review passed, grey idle (with a mug). An empty chair means the session isn't running.
+- **Messages** fly between desks as a paper plane.
+- **The whiteboard** in the meeting area shows the active board's stages (or To do / Doing / Review / Done) with a sticky per task in its owner's colour. Click it to open Plans.
+
+Drag to pan, scroll to zoom, double-click to fit. **Settings → Project → Office style** switches to the classic pixel office, where agents walk to the PR belt; the choice is saved in this browser. With reduced motion turned on in your system, the office stops its animations and only refreshes when something changes state.
 
 ## Windows
 

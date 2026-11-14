@@ -13,6 +13,7 @@ import { Planner } from "../server/planner";
 import type { RepoInfo } from "../server/repo";
 import { ConfigError, loadConfig, parseConfig, saveConfig, serializeConfig, watchConfig } from "../server/store";
 import { Team } from "../server/team";
+import { makeCommands } from "../server/commands";
 import { normalizeConfig, toolsFor } from "../src/data/roles";
 import type { HqConfig, SetupState } from "../src/data/types";
 
@@ -304,6 +305,54 @@ const studio = (): HqConfig => parseConfig(STUDIO, (rel) => studioFiles[rel] ?? 
   bad.team = [];
   throws("save: refuses to write a config it couldn't read back", () => saveConfig(repoAt("bad").root, bad), /team/);
   ok("save: nothing was written", !existsSync(join(tmp, "bad", ".yacc", "config.yml")));
+}
+
+// ------------------------------------------------------------------ 10. desks in the office
+
+{
+  const c = studio();
+  const desks = () => Object.fromEntries(c.team.map((a) => [a.id, a.desk]));
+  ok("desks: the lead has none, workers get the lowest free", JSON.stringify(desks()) === JSON.stringify({ maya: undefined, leo: 0, ada: 1, sam: 2 }), desks());
+
+  // In the file desks count from 1, as on screen; the lead's line has none.
+  const { yaml, files } = serializeConfig(c);
+  ok("desks: written from 1", /id: leo[\s\S]*?desk: 1/.test(yaml) && /id: sam[\s\S]*?desk: 3/.test(yaml), yaml);
+  const back = parseConfig(yaml, (rel) => files[rel] ?? null).config;
+  ok("desks: read back the same", back.team.map((a) => a.desk).join() === c.team.map((a) => a.desk).join(), back.team.map((a) => a.desk));
+
+  // Hand-written desks are kept; a duplicate, a bad number or a desk on the lead is fixed.
+  const hand = parseConfig(STUDIO.replace("role: researcher, mode: local", "role: researcher, mode: local, desk: 5").replace("role: writer, mode: local", "role: writer, mode: local, desk: 5").replace("role: lead }", "role: lead, desk: 2 }"), (rel) => studioFiles[rel] ?? null).config;
+  const by = (id: string) => hand.team.find((a) => a.id === id)!.desk;
+  ok("desks: a hand-written desk is kept", by("leo") === 4, by("leo"));
+  ok("desks: a taken desk goes to the first, the second gets a free one", by("ada") === 0, by("ada"));
+  ok("desks: the lead's desk is dropped", by("maya") === undefined);
+  ok("desks: all unique", new Set(hand.team.filter((a) => a.desk !== undefined).map((a) => a.desk)).size === 3);
+  throws("desks: zero isn't a desk in the file", () => parseConfig(STUDIO.replace("role: editor, mode: local", "role: editor, mode: local, desk: 0"), (rel) => studioFiles[rel] ?? null), /desk/);
+
+  // Removing someone frees their desk; the next agent takes the lowest free one.
+  const d = studio();
+  d.team = d.team.filter((a) => a.id !== "leo");
+  d.team.push({ ...structuredClone(d.team[1]), id: "kit", name: "Kit", desk: undefined });
+  normalizeConfig(d);
+  ok("desks: a freed desk is reused", d.team.find((a) => a.id === "kit")!.desk === 0 && d.team.find((a) => a.id === "ada")!.desk === 1);
+
+  // Picking a taken desk in Settings swaps the two.
+  const repo = repoAt("desks");
+  const config = studio();
+  config.project.path = repo.root;
+  const hub = new Hub(repo, "studio", config, { boards: [{ id: "B1", title: "Backlog", status: "active", order: 0 }], tasks: [] }, setup);
+  const stub = {} as never;
+  const cmds = makeCommands(hub, { recheckSetup: async () => {} } as never, stub, stub, stub, stub, { briefings: stub, memory: stub });
+  const at = (id: string) => hub.cfg(id)!.desk;
+  cmds.updateAgent("sam", { desk: 0 });
+  ok("desks: a taken desk swaps", at("sam") === 0 && at("leo") === 2, [at("sam"), at("leo")]);
+  cmds.updateAgent("ada", { desk: 7 });
+  ok("desks: a free desk just moves", at("ada") === 7 && at("leo") === 2);
+  cmds.updateAgent("maya", { desk: 3 });
+  ok("desks: the lead can't take one", at("maya") === undefined);
+  cmds.updateAgent("sam", { desk: 99 });
+  ok("desks: out of range is ignored", at("sam") === 0);
+  ok("desks: saved to config.yml", /id: ada[\s\S]*?desk: 8/.test(yml(repo)), yml(repo));
 }
 
 rmSync(tmp, { recursive: true, force: true });

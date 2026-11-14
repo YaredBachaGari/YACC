@@ -2,7 +2,7 @@
 
 **A command center for teams of AI agents.** A lead agent plans the work, other agents carry it out in their own sandboxes, and you watch and steer from a live office view.
 
-> **Status: Phase 3 (part 1).** Start from a template (Software Team, Content Studio, R&D Lab, or just a lead), or one you saved. YACC is a fork of [JSM HQ](https://github.com/jsmastery-pro/jsm-hq) (see [NOTICE.md](NOTICE.md)). Roles, reporting lines, hiring, how much the team may do on its own, and the workflow (stages, reviews, your approvals) are settings, saved as YAML. Agents share files through `shared/`, keep a project memory, and the lead reports to you in Briefings. GitHub is needed only when the work is pull requests. The new office, more models and visual editors come next.
+> **Status: Phase 3.** A modern office: each agent sits at its own desk and you can see at a glance who is working, waiting on you or in review (the classic pixel office is still in Settings → Project). Start from a template (Software Team, Content Studio, R&D Lab, or just a lead), or one you saved. YACC is a fork of [JSM HQ](https://github.com/jsmastery-pro/jsm-hq) (see [NOTICE.md](NOTICE.md)). Roles, reporting lines, hiring, how much the team may do on its own, and the workflow (stages, reviews, your approvals) are settings, saved as YAML. Agents share files through `shared/`, keep a project memory, and the lead reports to you in Briefings. GitHub is needed only when the work is pull requests. More models (Gemini, DeepSeek, Perplexity) and visual editors come next.
 
 You are the **CEO**. One **lead** agent takes your instructions, plans the work, assigns it, reviews it and reports back. Every other agent has a **role** you define: what it may do and how it should work. The lead can hire more agents when the work needs it, up to a headcount limit you set. Each agent gets its own desk, its own copy of your repo and its own Docker Sandbox. Agents run **Claude Code** or **Codex**. Everything runs on your machine.
 
@@ -82,6 +82,8 @@ You don't need to install these by hand first. HQ checks for each one and shows 
 3. **HQ follows the PRs on GitHub.** Review comments go back to the author; a passing PR is reported to the lead; a merged PR marks the task done.
 4. **Agents ask when they're stuck.** A question, a blocked website or a missing key shows up in **Action items** and on the agent's card.
 5. **You review and merge.**
+
+**The office.** You sit in the glass office at the top left; the lead sits next to you; everyone else has a numbered desk on the floor. An agent's laptop and name tag show its state: green working, orange waiting on you (with a raised hand), blue in review. A paper plane flies between desks when agents message each other, and the whiteboard in the meeting area shows the current board. Click your desk for Briefings and the whiteboard for Plans. Drag to pan, scroll to zoom, double-click to fit.
 
 Click any agent to open its drawer: its live terminal, a shell inside its sandbox, its task, its messages, and the websites it tried to reach. Drag the drawer's edge to make it wider, or maximize it. **Terminal** in the top bar opens your own shell in the repo or any agent's folder.
 

@@ -96,6 +96,8 @@ export interface AgentConfig {
   hiredBy?: string;
   /** Hired for one piece of work; the lead dismisses it when that is done. */
   temporary?: boolean;
+  /** Which desk in the open-plan office (0-based). The lead has its own desk. Kept unique by normalizeConfig. */
+  desk?: number;
   cli: AgentCli;
   model: string; // optional start model ("" = the CLI's default; users can switch with /model)
   mode: AgentMode;
@@ -533,7 +535,7 @@ export interface WelcomeInput {
 }
 
 export type AgentPatch = Partial<
-  Pick<AgentConfig, "name" | "roleId" | "reportsTo" | "cli" | "model" | "mode" | "color" | "skills" | "roleMd" | "workspacePath">
+  Pick<AgentConfig, "name" | "roleId" | "reportsTo" | "cli" | "model" | "mode" | "color" | "skills" | "roleMd" | "workspacePath" | "desk">
 >;
 
 export type RolePatch = Partial<Pick<RoleConfig, "title" | "can" | "instructions" | "cli" | "model">>;

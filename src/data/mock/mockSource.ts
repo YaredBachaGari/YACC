@@ -251,6 +251,10 @@ export function createMockSource(): OfficeDataSource {
     updateAgent(id, patch: AgentPatch) {
       const agent = world.cfg(id);
       if (!agent) return;
+      if (typeof patch.desk === "number") {
+        const holder = world.snap.config.team.find((a) => a !== agent && a.desk === patch.desk);
+        if (holder) holder.desk = agent.desk;
+      }
       Object.assign(agent, patch);
       world.configChanged();
     },
