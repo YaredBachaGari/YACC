@@ -49,7 +49,7 @@ async function main() {
 
   log.info(`repo   ${repo.root}${repo.github ? `  (github.com/${repo.github})` : ""}`);
   log.info("checking setup…");
-  const setup = await runSetupChecks(repo, config.team, config.workflow.deliverable === "pull-request");
+  const setup = await runSetupChecks(repo, config, config.workflow.deliverable === "pull-request");
   for (const c of setup.checks) log.info(`  ${c.status === "ok" ? "✓" : c.status === "warning" ? "!" : "✗"} ${c.label}: ${c.detail}`);
 
   const hub = new Hub(repo, slug, config, loadPlan(repo.root), setup);

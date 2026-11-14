@@ -49,7 +49,7 @@ export const ptyBackend: SessionBackend = {
     if (procs.has(name)) return;
     // There's no shell to load an env file into (sandbox mode passes it to sbx instead).
     const { file, args } = await resolveCommand(spec.file, spec.args);
-    const pty = spawnPty(file, args, { name: "xterm-256color", cols: size.cols, rows: size.rows, cwd, env: TERM_ENV });
+    const pty = spawnPty(file, args, { name: "xterm-256color", cols: size.cols, rows: size.rows, cwd, env: { ...TERM_ENV, ...(spec.env ?? {}) } });
     const screen = new Terminal({ cols: size.cols, rows: size.rows, scrollback: 300, allowProposedApi: true });
     const proc: Proc = { pty, screen, exit: { dead: false, exitStatus: null }, views: new Set(), ends: new Set() };
     pty.onData((d) => {

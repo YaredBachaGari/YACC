@@ -197,6 +197,7 @@ export const officeActions = {
   saveTemplate: source.saveTemplate.bind(source),
   addRole: source.addRole.bind(source),
   updateRole: source.updateRole.bind(source),
+  setProviderAuth: source.setProviderAuth.bind(source),
   removeRole: source.removeRole.bind(source),
   updateOrg: source.updateOrg.bind(source),
   updateWorkflow: source.updateWorkflow.bind(source),

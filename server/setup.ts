@@ -1,8 +1,10 @@
 // The setup checklist: what this machine has, and how to fix what's missing.
 
 import { existsSync, readFileSync } from "node:fs";
-import { arch, cpus, platform, release, totalmem } from "node:os";
-import type { AgentConfig, SetupCheck, SetupFix, SetupState } from "../src/data/types";
+import { arch, cpus, homedir, platform, release, totalmem } from "node:os";
+import { join } from "node:path";
+import type { HqConfig, SetupCheck, SetupCheckId, SetupFix, SetupState } from "../src/data/types";
+import { PROVIDERS, authFor, teamChecks } from "../src/data/models";
 import { usesTmux } from "./backends";
 import { parseCliJson, sandboxList } from "./lib/json";
 import { has, refreshWindowsPath, run } from "./lib/exec";
@@ -182,22 +184,80 @@ async function checkCodex(): Promise<Check> {
   return { ...base, status: "missing", detail: "Not installed. Only needed for Codex agents in Local mode (sandboxes have it).", fix: fix("npm install -g @openai/codex", false, "https://developers.openai.com/codex/cli") };
 }
 
-async function checkOpenAiSecret(sbxOk: boolean): Promise<Check> {
-  const base = { id: "openai-secret" as const, label: "OpenAI sign-in for Codex agents", neededFor: "sandbox" as const };
-  if (!sbxOk) return { ...base, status: "missing", detail: "Waiting for sbx.", fix: null };
+/** Service secrets stored for every sandbox (`sbx secret ls`), or null when sbx can't say. */
+async function globalSecrets(sbxOk: boolean): Promise<Set<string> | null> {
+  if (!sbxOk) return null;
   const r = await run("sbx", ["secret", "ls", "--json"], { timeoutMs: 10_000 });
-  let has = false;
   try {
-    has = (parseCliJson<{ secrets?: { name: string; scope: string }[] }>(r.stdout)?.secrets ?? []).some((s) => s.name === "openai" && s.scope === "global");
+    const list = parseCliJson<{ secrets?: { name: string; scope: string }[] }>(r.stdout)?.secrets;
+    return list ? new Set(list.filter((s) => s.scope === "global").map((s) => s.name)) : null;
   } catch {
-    /* sbx down */
+    return null;
   }
-  if (has) return { ...base, status: "ok", detail: "Stored in Docker's secret store.", fix: null };
-  return { ...base, status: "missing", detail: "Codex agents can't sign in until this is set. Opens your browser to sign in with ChatGPT.", fix: fix("sbx secret set openai --oauth", true, "https://docs.docker.com/ai/sandboxes/") };
 }
 
-/** `team` adds the Codex checks only when the team has Codex agents; `github` false leaves out GitHub (work is files, not pull requests). */
-export async function runSetupChecks(repo: RepoInfo, team: AgentConfig[] = [], github = true): Promise<SetupState> {
+const SBX_CREDENTIALS = "https://docs.docker.com/ai/sandboxes/configuration/credentials/";
+
+/** A key (or sign-in) in Docker Sandboxes' secret store, which its proxy adds to the provider's requests. */
+function checkSecret(id: SetupCheckId, label: string, service: string, secrets: Set<string> | null, why: string, command: string, alsoOk = false): Check {
+  const base = { id, label, neededFor: "sandbox" as const };
+  if (!secrets && !alsoOk) return { ...base, status: "missing", detail: "Waiting for sbx.", fix: null };
+  if (secrets?.has(service) || alsoOk) return { ...base, status: "ok", detail: "Stored in Docker's secret store; the proxy adds it, so it never enters a sandbox.", fix: null };
+  return { ...base, status: "missing", detail: why, fix: fix(command, true, SBX_CREDENTIALS) };
+}
+
+/** A key in the environment YACC was started from (Local mode: the program reads it there). */
+function checkEnv(id: SetupCheckId, label: string, vars: string[], keyUrl: string): Check {
+  const base = { id, label, neededFor: "local" as const };
+  const found = vars.find((v) => process.env[v]?.trim());
+  if (found) return { ...base, status: "ok", detail: `${found} is set.`, fix: null };
+  const set = os === "win32" ? `setx ${vars[0]} "<your key>"` : `export ${vars[0]}="<your key>"`;
+  return {
+    ...base,
+    status: "missing",
+    detail: `Set ${vars.join(" or ")} where YACC starts (your shell profile${os === "win32" ? " or user environment variables" : ""}), then restart YACC. The key isn't saved in config.yml.`,
+    fix: fix(set, false, keyUrl),
+  };
+}
+
+async function checkGemini(): Promise<Check> {
+  const base = { id: "gemini" as const, label: "Gemini CLI (for Gemini agents in Local mode)", neededFor: "local" as const };
+  const v = await run("gemini", ["--version"], { timeoutMs: 15_000 });
+  if (v.ok) return { ...base, status: "ok", detail: v.stdout.trim().split("\n")[0], fix: null };
+  return { ...base, status: "missing", detail: "Not installed. Only needed for Gemini agents in Local mode (sandboxes have it).", fix: fix("npm install -g @google/gemini-cli", true, "https://github.com/google-gemini/gemini-cli") };
+}
+
+/** Sign in with Google is stored by Gemini CLI itself; a warning, since the agent's own terminal asks too. */
+function checkGeminiLogin(): Check {
+  const base = { id: "gemini-login" as const, label: "Gemini CLI signed in with Google", neededFor: "local" as const };
+  if (existsSync(join(homedir(), ".gemini", "oauth_creds.json"))) return { ...base, status: "ok", detail: "Signed in.", fix: null };
+  return { ...base, status: "warning", detail: "Run `gemini` once in a terminal and choose Sign in with Google, or answer the sign-in in the agent's terminal when it starts.", fix: fix("gemini", false, "https://github.com/google-gemini/gemini-cli#-authentication-options") };
+}
+
+/** DeepSeek is a custom model provider in Docker Sandboxes (model selection is experimental there). */
+async function checkDeepseekProvider(sbxOk: boolean): Promise<Check> {
+  const base = { id: "deepseek-provider" as const, label: "DeepSeek set up in Docker Sandboxes", neededFor: "sandbox" as const };
+  if (!sbxOk) return { ...base, status: "missing", detail: "Waiting for sbx.", fix: null };
+  const [feature, providers] = await Promise.all([
+    run("sbx", ["settings", "get", "feature.model"], { timeoutMs: 10_000 }),
+    run("sbx", ["settings", "get", "model.providers"], { timeoutMs: 10_000 }),
+  ]);
+  const on = /\btrue\b/i.test(feature.stdout);
+  const has = /"deepseek"\s*:/.test(providers.stdout);
+  if (on && has) return { ...base, status: "ok", detail: "Sandboxes reach DeepSeek's API through Docker's model provider.", fix: null };
+  return {
+    ...base,
+    status: "missing",
+    detail: `${on ? "" : "Turns on model selection (experimental in sbx) and "}adds DeepSeek as a model provider. Other providers you set are kept.`,
+    fix: fix("sbx settings set feature.model true && sbx settings set model.providers '{\"deepseek\":…}'", true, "https://docs.docker.com/ai/sandboxes/configuration/models/"),
+  };
+}
+
+/**
+ * `cfg` decides the model checks: each agent's model, mode and sign-in (models.ts → requiredChecks), so the
+ * list shows only what this team needs. `github` false leaves out GitHub (work is files, not pull requests).
+ */
+export async function runSetupChecks(repo: RepoInfo, cfg: Pick<HqConfig, "team" | "roles" | "providers"> = { team: [], roles: [] }, github = true): Promise<SetupState> {
   // So "Check again" sees a tool that was installed while HQ was running (Windows keeps the old PATH otherwise).
   await refreshWindowsPath();
   const brew = os === "darwin" && (await has("brew"));
@@ -206,9 +266,34 @@ export async function runSetupChecks(repo: RepoInfo, team: AgentConfig[] = [], g
   const [login, secret] = await Promise.all([checkSbxLogin(sbxOk), checkGithubSecret(sbxOk, gh.status === "ok")]);
   const policy = await checkSbxPolicy(login.status === "ok");
   const checks: SetupCheck[] = github ? [osCheck, sbx, login, policy, secret, tmux, claude, gh, checkRemote(repo)] : [osCheck, sbx, login, policy, tmux, claude];
-  const codexAgents = team.filter((a) => a.cli === "codex");
-  if (codexAgents.some((a) => a.mode === "sandbox")) checks.splice(5, 0, await checkOpenAiSecret(sbxOk));
-  if (codexAgents.some((a) => a.mode === "local")) checks.push(await checkCodex());
+  // What the team's models need: sign-ins and keys for sandboxes go right after the sandbox checks.
+  const want = new Set(teamChecks(cfg));
+  const secrets = [...want].some((c) => c.endsWith("-secret")) ? await globalSecrets(sbxOk) : null;
+  const openaiKey = authFor(cfg.providers, "openai") === "api-key";
+  const sandboxChecks: Check[] = [];
+  if (want.has("anthropic-secret")) sandboxChecks.push(checkSecret("anthropic-secret", "Anthropic API key for Claude agents", "anthropic", secrets, "Claude agents use an API key (Settings → Models). Paste it when asked.", "sbx secret set anthropic"));
+  if (want.has("openai-secret"))
+    sandboxChecks.push(
+      openaiKey
+        ? checkSecret("openai-secret", "OpenAI API key for Codex agents", "openai", secrets, "Codex agents use an API key (Settings → Models). Paste it when asked.", "sbx secret set openai")
+        : checkSecret("openai-secret", "OpenAI sign-in for Codex agents", "openai", secrets, "Codex agents can't sign in until this is set. Opens your browser to sign in with ChatGPT.", "sbx secret set openai --oauth"),
+    );
+  if (want.has("google-secret")) sandboxChecks.push(checkSecret("google-secret", "Gemini API key for Gemini agents", "google", secrets, "Gemini agents in sandboxes need a Google AI Studio key. Paste it when asked.", "sbx secret set google"));
+  if (want.has("deepseek-provider")) sandboxChecks.push(await checkDeepseekProvider(sbxOk));
+  if (want.has("deepseek-secret"))
+    sandboxChecks.push(checkSecret("deepseek-secret", "DeepSeek API key", "deepseek", secrets, "DeepSeek agents need an API key. Paste it when asked.", "sbx secret set deepseek", !!process.env.DEEPSEEK_API_KEY?.trim()));
+  checks.splice(5, 0, ...sandboxChecks);
+  if (want.has("codex")) checks.push(await checkCodex());
+  if (want.has("gemini")) checks.push(await checkGemini());
+  if (want.has("gemini-login")) checks.push(checkGeminiLogin());
+  const env: [SetupCheckId, string, string[], string][] = [
+    ["anthropic-env", "Anthropic API key (Local mode)", ["ANTHROPIC_API_KEY"], PROVIDERS.anthropic.keyUrl],
+    ["openai-env", "OpenAI API key (Local mode)", ["OPENAI_API_KEY"], PROVIDERS.openai.keyUrl],
+    ["google-env", "Gemini API key (Local mode)", ["GEMINI_API_KEY", "GOOGLE_API_KEY"], PROVIDERS.google.keyUrl],
+    ["deepseek-env", "DeepSeek API key (Local mode)", ["DEEPSEEK_API_KEY"], PROVIDERS.deepseek.keyUrl],
+    ["perplexity-env", "Perplexity API key (Local mode)", ["PERPLEXITY_API_KEY"], PROVIDERS.perplexity.keyUrl],
+  ];
+  for (const [id, label, vars, url] of env) if (want.has(id)) checks.push(checkEnv(id, label, vars, url));
   const ok = (c: SetupCheck) => c.status === "ok";
   return {
     machine: { cpus: cpus().length, memoryGb: Math.round(totalmem() / 1024 ** 3), persistentAgents: usesTmux() },

@@ -2,9 +2,9 @@
 
 **A command center for teams of AI agents.** A lead agent plans the work, other agents carry it out in their own sandboxes, and you watch and steer from a live office view.
 
-> **Status: Phase 3.** A modern office: each agent sits at its own desk and you can see at a glance who is working, waiting on you or in review (the classic pixel office is still in Settings → Project). Start from a template (Software Team, Content Studio, R&D Lab, or just a lead), or one you saved. YACC is a fork of [JSM HQ](https://github.com/jsmastery-pro/jsm-hq) (see [NOTICE.md](NOTICE.md)). Roles, reporting lines, hiring, how much the team may do on its own, and the workflow (stages, reviews, your approvals) are settings, saved as YAML. Agents share files through `shared/`, keep a project memory, and the lead reports to you in Briefings. GitHub is needed only when the work is pull requests. More models (Gemini, DeepSeek, Perplexity) and visual editors come next.
+> **Status: Phase 4 (part 1).** Agents run on Claude, OpenAI (Codex), Gemini or DeepSeek, each signed in with your subscription or an API key, and any role can get Perplexity for live research. A modern office shows each agent at its own desk: who is working, waiting on you or in review. Start from a template (Software Team, Content Studio, R&D Lab, or just a lead), or one you saved. YACC is a fork of [JSM HQ](https://github.com/jsmastery-pro/jsm-hq) (see [NOTICE.md](NOTICE.md)). Roles, reporting lines, hiring, how much the team may do on its own, and the workflow (stages, reviews, your approvals) are settings, saved as YAML. Agents share files through `shared/`, keep a project memory, and the lead reports to you in Briefings. GitHub is needed only when the work is pull requests. Usage tracking, budgets and model fallback come next, then visual editors.
 
-You are the **CEO**. One **lead** agent takes your instructions, plans the work, assigns it, reviews it and reports back. Every other agent has a **role** you define: what it may do and how it should work. The lead can hire more agents when the work needs it, up to a headcount limit you set. Each agent gets its own desk, its own copy of your repo and its own Docker Sandbox. Agents run **Claude Code** or **Codex**. Everything runs on your machine.
+You are the **CEO**. One **lead** agent takes your instructions, plans the work, assigns it, reviews it and reports back. Every other agent has a **role** you define: what it may do and how it should work. The lead can hire more agents when the work needs it, up to a headcount limit you set. Each agent gets its own desk, its own copy of your repo and its own Docker Sandbox. Agents run on **Claude**, **OpenAI (Codex)**, **Gemini** or **DeepSeek**: pick a model per agent or per role, and sign in with your subscription or an API key ([Models](docs/how-it-works.md#models)). Everything runs on your machine.
 
 Settings live in `.yacc/config.yml` and `.yacc/roles/`: edit them in the app or by hand. See [How it works](docs/how-it-works.md#roles-the-org-and-settings-files).
 
@@ -34,7 +34,7 @@ yacc-hq
 
 HQ opens in your browser and walks you through the rest:
 
-1. **Welcome:** name the project and pick a lead and workers (Claude Code or Codex for each).
+1. **Welcome:** name the project and pick a lead and workers (a model for each: Claude, OpenAI, Gemini or DeepSeek).
 2. **Setup checklist:** anything missing on your machine is listed with the command to fix it.
 3. **Start team** in the top bar, then message the lead, for example: *"Plan two small tasks for Dwight and assign the first one."*
 
@@ -70,7 +70,7 @@ To update: `git pull`, then `pnpm install && pnpm build` in the YACC folder.
 | tmux (macOS, Linux) | Agents keep running if you close HQ |
 | A Claude or ChatGPT account | For the agents themselves |
 
-Sandboxes need **macOS 14+ on Apple silicon, Windows 11, or Ubuntu 24.04+**. On other machines, set agents to **Local** in Settings → Team: they run Claude Code or Codex directly on your machine, with permission prompts on.
+Sandboxes need **macOS 14+ on Apple silicon, Windows 11, or Ubuntu 24.04+**. On other machines, set agents to **Local** in Settings → Team: they run their program (Claude Code, Codex or Gemini CLI) directly on your machine, with permission prompts on.
 
 You don't need to install these by hand first. HQ checks for each one and shows the exact command. The [getting-started guide](docs/getting-started.md) has every step.
 
@@ -97,7 +97,8 @@ More detail on workspaces, sandboxes, MCP servers, app variables and what HQ sav
 | Start fails: "network policy has not been initialized" | A new Docker Sandboxes install needs a base policy once: `sbx policy init balanced`. |
 | Agents fail to start with a sign-in error | Your Docker sign-in expired. Run `sbx login`, then **Check again** in the setup checklist. |
 | Agents can't push or open PRs | Run `sbx secret set github --command "gh auth token"`, and check the repo has a GitHub `origin`. |
-| A Codex agent waits on "Do you trust this folder?" | Answer it once in the agent's terminal. HQ never answers trust prompts for you. |
+| A Codex or Gemini agent waits on "Do you trust this folder?" | Answer it once in the agent's terminal. YACC never answers trust prompts for you. |
+| An agent won't start: "API key … (Local mode)" | Set that variable where YACC starts (your shell profile), then restart YACC. Keys are never read from `config.yml`. |
 | A CLI sign-in in a sandbox opens the browser, then fails on `localhost:<port>` | Press **Forward port** in the agent's drawer, then reload the page. |
 | An agent's state never changes | The sandbox can't reach HQ. `sbx policy ls` should show `localhost:<port>` and `host.docker.internal:<port>` allowed; HQ adds them on start. |
 | "Port 7420 is in use" | Another HQ is running. Stop it, or use `--port 7421`. |

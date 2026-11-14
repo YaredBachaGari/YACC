@@ -76,13 +76,18 @@ Agents push branches and open pull requests from inside their sandbox. Store you
 sbx secret set github --command "gh auth token"
 ```
 
-Using **Codex** agents? Also sign in with ChatGPT once:
+Claude Code agents ask you to sign in the first time they start. Do it in the agent's terminal inside YACC.
 
-```bash
-sbx secret set openai --oauth
-```
+Using other models? Each needs one more step, shown in **Settings → Models** and the Setup checklist with a **Run in terminal** button:
 
-Claude Code agents ask you to sign in the first time they start. Do it in the agent's terminal inside HQ.
+| Model | One-time step |
+| --- | --- |
+| OpenAI (Codex) | `sbx secret set openai --oauth` (sign in with ChatGPT), or `sbx secret set openai` for an API key |
+| Gemini | `sbx secret set google`, then paste a key from Google AI Studio |
+| DeepSeek | Set up DeepSeek in Docker Sandboxes (YACC does it), then `sbx secret set deepseek` |
+| Claude with an API key | `sbx secret set anthropic` |
+
+Keys go to Docker's secret store, never into `config.yml`.
 
 ## 5. Prepare a GitHub repo
 
@@ -112,7 +117,7 @@ yacc-hq
 
 (Install the `yacc-hq` command first: see Quick start in the [README](../README.md).) HQ opens your browser. If it doesn't, open the `http://127.0.0.1:7420/?token=…` link printed in the terminal.
 
-- **Welcome:** name the project, pick a lead and workers (Claude Code or Codex for each) and a review tool. Optionally pick your stack (frameworks, auth, payments, database, analytics, security): agents then get those tools' agent skills and know what the project uses. First pick what the team is for (a template), then adjust the people. Agents besides the lead are optional: with none, the lead hires who it needs from the role library. This is saved to `.yacc/config.yml` in your repo.
+- **Welcome:** name the project, pick a lead and workers (a model for each: Claude, OpenAI, Gemini or DeepSeek) and a review tool. Optionally pick your stack (frameworks, auth, payments, database, analytics, security): agents then get those tools' agent skills and know what the project uses. First pick what the team is for (a template), then adjust the people. Agents besides the lead are optional: with none, the lead hires who it needs from the role library. This is saved to `.yacc/config.yml` in your repo.
 - **Setup checklist:** anything still missing shows here with a **Copy** button and, for safe commands, **Run in terminal**. Press **Check again** after fixing something.
 
 Leave the terminal running while you work. On macOS and Linux, agents keep running even if you close HQ; on Windows they stop with it (see [Windows](how-it-works.md#windows)).

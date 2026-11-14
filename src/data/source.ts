@@ -31,6 +31,8 @@ import type {
   SandboxSettings,
   Task,
   WorkflowPatch,
+  ProviderId,
+  AuthMode,
 } from "./types";
 
 export type OfficeEvent =
@@ -149,6 +151,8 @@ export interface OfficeDataSource {
   removeRole(id: string): void;
   /** The CEO's name and the headcount limit. */
   updateOrg(patch: OrgPatch): void;
+  /** How a model provider is signed in to: your subscription, or an API key (Settings → Models). */
+  setProviderAuth(provider: ProviderId, auth: AuthMode): void;
   updateWorkflow(patch: WorkflowPatch): void;
   updateProject(patch: Partial<ProjectConfig>): void;
   createBoard(title: string): void;
