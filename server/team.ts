@@ -3,6 +3,7 @@
 
 import { nextAgentName } from "../src/data/names";
 import { can, findRole, freeRoleId, leadOf, roleOf } from "../src/data/roles";
+import { libraryCard, ROLE_LIBRARY, roleFromCard } from "../src/data/templates";
 import { LEAD_ROLE_ID, type AgentCli, type AgentConfig, type AgentMode, type RemoveAgentOptions, type RoleConfig } from "../src/data/types";
 import { agentPalette } from "../src/theme/tokens";
 import { Hub } from "./hub";
@@ -130,14 +131,22 @@ export class Team {
     let role: RoleConfig | undefined = findRole(this.cfg, wanted);
     let created = false;
     if (role?.id === LEAD_ROLE_ID) throw new Error("A team has one lead. Hire into another role.");
-    if (!role && (input.instructions?.trim().length ?? 0) < 40)
-      throw new Error(`There is no "${wanted}" role yet (roles: ${this.cfg.roles.map((r) => r.title).join(", ")}). To create it, pass instructions: what this role does, how it should work, and what a finished result looks like.`);
+    // A role the team doesn't have yet, but the role library does: ready-made instructions, no need to write them.
+    // Instructions the hirer wrote win over the card's.
+    const card = !role && (input.instructions?.trim().length ?? 0) < 40 ? libraryCard(wanted) : undefined;
+    if (!role && !card && (input.instructions?.trim().length ?? 0) < 40)
+      throw new Error(`There is no "${wanted}" role yet (on the team: ${this.cfg.roles.map((r) => r.title).join(", ")}; in the library: ${ROLE_LIBRARY.map((c) => c.title).join(", ")}). Pick one of those, or pass instructions to create it: what this role does, how it should work, and what a finished result looks like.`);
     const mode = this.cfg.autonomy.hire;
     if (mode === "ask" && !approved) {
       if (!this.deps.ask) throw new Error("Hiring needs the CEO's approval, and HQ can't ask right now.");
       const title = `${by.name} wants to hire a ${role?.title ?? wanted}${input.temporary ? " (temporary)" : ""}`;
       this.deps.ask("hire", by.id, title, [`Why: ${reason}`, role ? "" : `New role. Instructions:\n${input.instructions!.trim().slice(0, 1500)}`].filter(Boolean).join("\n\n"), { input: { ...input } });
       return `The CEO has asked to approve hires. Your request to hire a ${role?.title ?? wanted} is in their Action items; HQ tells you when they answer. Carry on with what you can meanwhile.`;
+    }
+    if (!role && card) {
+      role = { ...roleFromCard(card), id: freeRoleId(this.cfg, card.title), can: card.can.filter((p) => p === "work" || p === "review") };
+      this.cfg.roles.push(role);
+      created = true;
     }
     if (!role) {
       const instructions = input.instructions?.trim() ?? "";

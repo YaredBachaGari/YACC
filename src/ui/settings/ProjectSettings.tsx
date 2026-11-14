@@ -36,6 +36,7 @@ export function ProjectSettings() {
   if (!project) return null;
   return (
     <div className="flex flex-col gap-5">
+      <SaveTemplate />
       <FontPicker />
       <section className="grid grid-cols-2 gap-3 border-[3px] border-ink bg-white p-3">
         <div className="col-span-2">
@@ -86,5 +87,49 @@ export function ProjectSettings() {
         </ul>
       </section>
     </div>
+  );
+}
+
+/** Save this setup (roles, team, workflow, autonomy, brief) as a template for new projects. */
+function SaveTemplate() {
+  const live = useOffice((s) => s.live);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [where, setWhere] = useState<"project" | "user">("user");
+  const [saved, setSaved] = useState(false);
+  return (
+    <section className="border-[3px] border-ink bg-white p-3">
+      <SectionTitle>Save as a template</SectionTitle>
+      <p className="mb-2 text-[13px] text-muted">
+        Saves the roles, the team (not temporary hires), the workflow, autonomy and the brief, so a new project can start from them. No secrets, sandboxes or tasks are saved.
+      </p>
+      <div className="grid grid-cols-[1fr_1.4fr_200px_auto] items-end gap-2">
+        <Field label="Name">
+          <input className="field" value={name} maxLength={60} placeholder="My studio" onChange={(e) => (setName(e.target.value), setSaved(false))} />
+        </Field>
+        <Field label="Description">
+          <input className="field" value={description} maxLength={300} placeholder="What this team is for" onChange={(e) => setDescription(e.target.value)} />
+        </Field>
+        <Field label="Where">
+          <select className="field" value={where} onChange={(e) => setWhere(e.target.value as "project" | "user")}>
+            <option value="user">On this machine</option>
+            <option value="project">In this project</option>
+          </select>
+        </Field>
+        <button
+          className="btn"
+          disabled={!live || !name.trim()}
+          onClick={() => {
+            officeActions.saveTemplate(name.trim(), where, description.trim());
+            setSaved(true);
+          }}
+        >
+          {saved ? "Saved" : "Save"}
+        </button>
+      </div>
+      <p className="mt-1 text-[12px] text-muted">
+        {where === "user" ? "In ~/.yacc/templates/: offered when you set up any project on this machine." : "In .yacc/templates/ in this repo: commit it to share it with your team."}
+      </p>
+    </section>
   );
 }

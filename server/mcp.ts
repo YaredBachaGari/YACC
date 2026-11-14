@@ -17,6 +17,7 @@ import type { Briefings } from "./briefings";
 import type { Memory } from "./memory";
 import { SHARED_DIR, type SharedFiles } from "./shared";
 import { stageOf } from "../src/data/workflow";
+import { ROLE_LIBRARY } from "../src/data/templates";
 
 type Result = { content: { type: "text"; text: string }[]; isError?: boolean };
 
@@ -333,6 +334,17 @@ function buildServer(hub: Hub, planner: Planner, team: Team, extras: McpExtras, 
       needs("plan");
       extras.briefings.report(me, summary, deliverables, questions);
       return ok("Sent. It is in the CEO's Briefings; their reply comes to you as a message.");
+    }),
+  );
+
+  server.registerTool(
+    "list_roles",
+    { description: "Roles you can hire into: the team's roles (with who holds them) and ready-made roles from the role library. Hire into one with hire_agent and its title; no instructions needed." },
+    guard(() => {
+      const c = hub.snap.config;
+      const onTeam = c.roles.map((r) => ({ title: r.title, id: r.id, can: r.can, holders: c.team.filter((a) => a.roleId === r.id).map((a) => a.name), instructions: r.instructions.split("\n")[0].slice(0, 160) }));
+      const library = ROLE_LIBRARY.filter((card) => !c.roles.some((r) => r.id === card.id || r.title.toLowerCase() === card.title.toLowerCase())).map((card) => ({ title: card.title, summary: card.summary }));
+      return ok({ onTeam, library, headcount: `${c.team.length} of ${c.limits.maxAgents}` });
     }),
   );
 

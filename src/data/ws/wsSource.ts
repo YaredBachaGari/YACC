@@ -86,6 +86,7 @@ export function createWsSource(token: string): OfficeDataSource {
     replyBriefing: (id, text) => send("replyBriefing", id, text),
     markBriefingsRead: () => send("markBriefingsRead"),
     updateMemory: (patch) => send("updateMemory", patch),
+    saveTemplate: (name, where, description) => send("saveTemplate", name, where, description),
     addRole: (input) => send("addRole", input),
     updateRole: (id, patch) => send("updateRole", id, patch),
     removeRole: (id) => send("removeRole", id),

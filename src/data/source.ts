@@ -126,6 +126,8 @@ export interface OfficeDataSource {
   markBriefingsRead(): void;
   /** Rewrites parts of the project memory (.yacc/memory/). */
   updateMemory(patch: Partial<ProjectMemory>): void;
+  /** Saves the current setup as a template, in this project or for you. */
+  saveTemplate(name: string, where: "project" | "user", description?: string): void;
 
   // MCP servers (Docker Sandboxes' registry)
   refreshMcp(): void;

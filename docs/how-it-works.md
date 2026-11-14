@@ -223,3 +223,18 @@ With `deliverable: files`, HQ doesn't use GitHub at all: no PR polling, no GitHu
 **Briefings.** The lead reports with `report_to_ceo`: a summary, where the outputs are, and questions. Reports appear under Briefings in the top bar; your reply goes to the lead as a message. Notices about things the team did on its own appear there too.
 
 **Autonomy** (`autonomy` in `config.yml`, Settings → Team): for hiring and for dismissing, choose `auto` (just do it), `notify` (do it and tell me in Briefings; the default) or `ask` (wait for my approval in Action items). The headcount limit applies in every case. Website access always asks.
+
+## Templates and the role library
+
+A **template** is a whole setup for one purpose: the roles (and their instructions), the starting team, the workflow, autonomy, the headcount limit, the office name and a starting brief. The welcome screen starts from one; after that, everything is ordinary settings.
+
+| Template | Starts with | Work moves |
+| --- | --- | --- |
+| Software Team | a lead, a developer | Build, ending in a pull request (a review by the lead if there is no GitHub remote) |
+| Content Studio | a producer, a researcher, a writer, an editor | Research → Script (the editor reviews) → Final edit (you approve) |
+| R&D Lab | a principal, a researcher, an experimenter, an analyst | Survey → Run → Analyse (the principal reviews) → Report (you approve) |
+| Start with a lead | a lead | Do (the lead reviews) |
+
+**Save your own** in Settings → Project: on this machine (`~/.yacc/templates/<name>/`, offered for every new project) or in this project (`.yacc/templates/<name>/`, commit it to share). A template folder is `template.yml` plus `roles/<id>.md` and `brief.md`; you can write one by hand. Temporary hires, secrets, sandboxes and tasks are never saved.
+
+The **role library** is a set of ready-made roles: Developer, QA, Designer, Technical writer, Researcher, Writer, Editor, Fact checker, Analyst, Experimenter and Marketer. Add them in Settings → Roles. The lead can see them with `list_roles` and hire into one by its title, with no instructions to write. Library roles can take tasks, and some can review; none can plan, hire or approve.
