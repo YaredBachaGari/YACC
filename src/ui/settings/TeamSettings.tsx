@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { nextAgentName } from "../../data/names";
 import { MAX_AGENTS_CEILING } from "../../data/roles";
-import { CEO_ID, CLI_LABEL, LEAD_ROLE_ID, type AgentCli, type AgentConfig, type AgentMode } from "../../data/types";
+import { AUTONOMY_LABEL, CEO_ID, CLI_LABEL, LEAD_ROLE_ID, type AgentCli, type AgentConfig, type AgentMode, type AutonomyMode } from "../../data/types";
 import { officeActions, useOffice } from "../../store/office";
 import { agentPalette } from "../../theme/tokens";
 import { Field, Portrait, SectionTitle } from "../kit";
@@ -24,9 +24,10 @@ export function TeamSettings() {
   const team = useOffice((s) => s.snap?.config.team);
   const ceo = useOffice((s) => s.snap?.config.ceo);
   const limits = useOffice((s) => s.snap?.config.limits);
+  const autonomy = useOffice((s) => s.snap?.config.autonomy);
   const [open, setOpen] = useState<string | null>(null);
   const [removing, setRemoving] = useState<AgentConfig | null>(null);
-  if (!team || !ceo || !limits) return null;
+  if (!team || !ceo || !limits || !autonomy) return null;
   return (
     <div className="flex flex-col gap-5">
       <section>
@@ -38,7 +39,7 @@ export function TeamSettings() {
           <Field label="Your name" hint="How agents refer to you.">
             <CommitInput className="field" value={ceo.name} maxLength={40} onCommit={(v) => v.trim() && officeActions.updateOrg({ ceoName: v.trim() })} />
           </Field>
-          <Field label="Headcount limit" hint={`Most agents on the team, lead included (up to ${MAX_AGENTS_CEILING}). The lead can hire without asking you, but never past this.`}>
+          <Field label="Headcount limit" hint={`Most agents on the team, lead included (up to ${MAX_AGENTS_CEILING}). The lead never hires past this, whatever you choose below.`}>
             <CommitInput
               className="field"
               type="number"
@@ -46,6 +47,19 @@ export function TeamSettings() {
               onCommit={(v) => Number.isFinite(Number(v)) && officeActions.updateOrg({ maxAgents: Number(v) })}
             />
           </Field>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2.5">
+          {(["hire", "dismiss"] as const).map((k) => (
+            <Field key={k} label={k === "hire" ? "When the lead hires" : "When the lead dismisses"} hint={autonomy[k] === "notify" ? "It goes ahead, and you get a note in Briefings." : autonomy[k] === "ask" ? "It waits for you in Action items." : "It goes ahead; it shows only in Activity."}>
+              <select className="field" value={autonomy[k]} onChange={(e) => officeActions.updateOrg({ autonomy: { [k]: e.target.value as AutonomyMode } })}>
+                {(Object.keys(AUTONOMY_LABEL) as AutonomyMode[]).map((m) => (
+                  <option key={m} value={m}>
+                    {AUTONOMY_LABEL[m]}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          ))}
         </div>
       </section>
       <section>

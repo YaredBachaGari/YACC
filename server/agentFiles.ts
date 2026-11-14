@@ -22,6 +22,8 @@ export const HQ_FILES = [ROLE_FILE, ".claude/settings.local.json", MCP_CONFIG, H
 export interface RoleExtras {
   ownRole?: string | null;
   hasEnvFile?: boolean;
+  /** The project memory (brief, recent decisions and lessons), from Memory.forRoleFile(). */
+  memory?: string;
 }
 
 /** HQ ≤ 0.3 wrote its role to ROLE.md; recognise that so it can be cleaned up. */
@@ -136,6 +138,10 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
   if (can(cfg, agent, "review") || can(cfg, agent, "approve"))
     rules.push("When HQ asks you to review or sign off a stage, check the work against its done-when, then call approve_work, or request_changes with specific fixes. Never approve work you haven't checked.");
   rules.push(
+    "Teammates can't see your folder. Share every output someone else needs with share_files, and name the shared paths in your notes. What teammates shared is copied into shared/ in your folder when work is handed to you; get_shared_files fetches the latest.",
+    "Record decisions others must follow, and lessons worth keeping, with add_to_memory.",
+  );
+  rules.push(
     "You can message any teammate with send_message, whatever the reporting lines.",
     "When you need the CEO to approve or decide something, or to do something outside your sandbox (create an account, database or API key, change a setting in a dashboard, put a value in your env file), call ask_user with a short title and clear steps, then keep working on what you can. You don't need to go through the lead for this. Never put secret values in it; name the variable instead. Variables reach you through HQ: ask the user to add NAME to your App variables in HQ (Settings → Sandbox → App variables) and restart you; there is no env file inside your sandbox to edit.",
   );
@@ -155,6 +161,7 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
     "## Team",
     team,
     "",
+    ...(extras.memory?.trim() ? ["## Project memory", "From .yacc/memory/ (read_memory has all of it).", extras.memory.trim(), ""] : []),
     `## How work moves`,
     `Each ${cfg.workflow.item.toLowerCase()} goes through these stages in order. HQ hands it to the next person when a stage is finished.`,
     describeFlow(cfg),

@@ -118,6 +118,12 @@ function reduce(snap: OfficeSnapshot, e: OfficeEvent): OfficeSnapshot {
       return { ...snap, mcp: e.mcp };
     case "access.updated":
       return { ...snap, accessRequests: upsert(snap.accessRequests ?? [], e.request, (r) => r.id === e.request.id) };
+    case "briefing.updated":
+      return { ...snap, briefings: upsert(snap.briefings ?? [], e.briefing, (b) => b.id === e.briefing.id) };
+    case "shared.updated":
+      return { ...snap, sharedFiles: e.files };
+    case "memory.updated":
+      return { ...snap, memory: e.memory };
   }
 }
 
@@ -185,6 +191,9 @@ export const officeActions = {
   openEnvFile: (id: string) => source.openEnvFile(id),
   refreshSbx: () => source.refreshSbx(),
   answerApproval: (agentId: string, approvalId: string, decision: "allow" | "dismiss") => source.answerApproval(agentId, approvalId, decision),
+  replyBriefing: source.replyBriefing.bind(source),
+  markBriefingsRead: source.markBriefingsRead.bind(source),
+  updateMemory: source.updateMemory.bind(source),
   addRole: source.addRole.bind(source),
   updateRole: source.updateRole.bind(source),
   removeRole: source.removeRole.bind(source),

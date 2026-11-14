@@ -3,6 +3,9 @@ import type {
   AccessDecision,
   AccessRequest,
   ActionItem,
+  Briefing,
+  ProjectMemory,
+  SharedFile,
   McpState,
   NewMcpServer,
   ActivityEvent,
@@ -49,7 +52,10 @@ export type OfficeEvent =
   | { type: "terminal.output"; agentId: string; data: string }
   | { type: "access.updated"; request: AccessRequest }
   | { type: "mcp.updated"; mcp: McpState }
-  | { type: "action.updated"; item: ActionItem };
+  | { type: "action.updated"; item: ActionItem }
+  | { type: "briefing.updated"; briefing: Briefing }
+  | { type: "shared.updated"; files: SharedFile[] }
+  | { type: "memory.updated"; memory: ProjectMemory };
 
 export type SimSpeed = 1 | 2 | 4;
 
@@ -115,6 +121,11 @@ export interface OfficeDataSource {
   openEnvFile(agentId: string): void;
   /** Closes an action item; HQ tells the agent (done: with your note; dismissed: continue without it). */
   resolveActionItem(id: string, decision: "done" | "dismissed", note?: string): void;
+  /** Answers a briefing's questions: sent to whoever wrote it. */
+  replyBriefing(id: string, text: string): void;
+  markBriefingsRead(): void;
+  /** Rewrites parts of the project memory (.yacc/memory/). */
+  updateMemory(patch: Partial<ProjectMemory>): void;
 
   // MCP servers (Docker Sandboxes' registry)
   refreshMcp(): void;

@@ -1,7 +1,7 @@
 import { agentPalette } from "../../theme/tokens";
 import type { OfficeDataSource, OfficeEvent, SimSpeed } from "../source";
 import { stackDomains } from "../stack";
-import { HOST_TERMINAL, LEAD_ROLE_ID, PERMISSIONS, type AccessRequest, AgentConfig, AgentPatch, Board, NewAgentInput, NewRoleInput, OrgPatch, ProjectConfig, RolePatch, SandboxSettings, WorkflowPatch } from "../types";
+import { HOST_TERMINAL, LEAD_ROLE_ID, PERMISSIONS, type AccessRequest, AgentConfig, AgentPatch, Board, NewAgentInput, NewRoleInput, OrgPatch, ProjectMemory, ProjectConfig, RolePatch, SandboxSettings, WorkflowPatch } from "../types";
 import { MAX_AGENTS_CEILING, WORKER_BASE_INSTRUCTIONS, findRole, freeRoleId } from "../roles";
 import { defaultPresetId, presets, type Preset } from "./presets";
 import { Simulation } from "./simulation";
@@ -396,6 +396,27 @@ export function createMockSource(): OfficeDataSource {
       syncSbx();
     },
 
+    replyBriefing(id: string, text: string) {
+      const b = world.snap.briefings?.find((x) => x.id === id);
+      if (!b) return;
+      b.reply = text;
+      b.read = true;
+      world.emit({ type: "briefing.updated", briefing: { ...b } });
+    },
+
+    markBriefingsRead() {
+      for (const b of world.snap.briefings ?? [])
+        if (!b.read) {
+          b.read = true;
+          world.emit({ type: "briefing.updated", briefing: { ...b } });
+        }
+    },
+
+    updateMemory(patch: Partial<ProjectMemory>) {
+      world.snap.memory = { ...(world.snap.memory ?? { brief: "", decisions: "", lessons: "" }), ...patch };
+      world.emit({ type: "memory.updated", memory: { ...world.snap.memory } });
+    },
+
     addRole(input: NewRoleInput) {
       const cfg = world.snap.config;
       const title = input.title.trim();
@@ -423,6 +444,7 @@ export function createMockSource(): OfficeDataSource {
     updateOrg(patch: OrgPatch) {
       const cfg = world.snap.config;
       if (patch.ceoName?.trim()) cfg.ceo.name = patch.ceoName.trim();
+      if (patch.autonomy) cfg.autonomy = { ...cfg.autonomy, ...patch.autonomy };
       if (typeof patch.maxAgents === "number") cfg.limits.maxAgents = Math.max(cfg.team.length, 2, Math.min(MAX_AGENTS_CEILING, Math.round(patch.maxAgents)));
       world.configChanged();
     },

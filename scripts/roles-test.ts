@@ -174,7 +174,7 @@ const studio = (): HqConfig => parseConfig(STUDIO, (rel) => studioFiles[rel] ?? 
   ok("tools: the lead doesn't take tasks", !tools("lead").includes("get_my_task"));
   ok("tools: a worker takes tasks only", tools("writer").includes("get_my_task") && !["create_task", "assign_task", "hire_agent"].some((t) => tools("writer").includes(t)));
   ok("tools: everyone can message and ask the CEO", ["lead", "researcher", "writer", "editor"].every((id) => ["send_message", "ask_user", "request_access"].every((t) => tools(id).includes(t))));
-  ok("tools: no permissions, common tools only", toolsFor({ can: [] }).join() === "list_workers,get_status,list_tasks,send_message,ask_user,request_access");
+  ok("tools: no permissions, common tools only", toolsFor({ can: [] }).join() === "list_workers,get_status,list_tasks,send_message,ask_user,request_access,share_files,get_shared_files,list_shared_files,read_memory,add_to_memory");
 }
 
 // ------------------------------------------------------------------ 6. the role file an agent reads
@@ -186,7 +186,7 @@ const studio = (): HqConfig => parseConfig(STUDIO, (rel) => studioFiles[rel] ?? 
   ok("role file: the lead reports to the CEO by name", lead.includes("You report to Abuti, the CEO (the human)."));
   ok("role file: org chart with reporting lines", lead.includes("- Abuti — CEO (the human)") && lead.includes("- Ada — Writer; reports to Leo"));
   ok("role file: the hirer sees the headcount limit", lead.includes("Headcount limit set by the CEO: 5 agents (the team has 4)."));
-  ok("role file: tools match the role", lead.includes("Your tools: create_board, create_task, update_task, assign_task, approve_work, request_changes, hire_agent, dismiss_agent, list_workers"));
+  ok("role file: tools match the role", lead.includes("Your tools: create_board, create_task, update_task, report_to_ceo, update_brief, assign_task, approve_work, request_changes, hire_agent, dismiss_agent, list_workers"));
   const writer = roleMd(c.team[2], c);
   ok("role file: a writer gets writer rules, not coding rules", writer.includes("Write the script from the research.") && !/\bPR\b|gh pr|branch/.test(writer), writer);
   ok("role file: anyone can go to the CEO directly", writer.includes("You don't need to go through the lead for this."));

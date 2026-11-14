@@ -6,6 +6,7 @@ import { BoardsDrawer } from "./BoardsDrawer";
 import { EnvironmentDrawer } from "./EnvironmentDrawer";
 import { PrDrawer } from "./PrDrawer";
 import { ActionItemsDrawer } from "./ActionItemsDrawer";
+import { BriefingsDrawer } from "./BriefingsDrawer";
 import { TerminalDrawer } from "./TerminalDrawer";
 
 export function DrawerHeader({ children }: { children: ReactNode }) {
@@ -124,6 +125,7 @@ export function DrawerHost() {
           {drawer.kind === "agent" && <AgentDrawer id={drawer.id} initialTab={drawer.tab} />}
           {drawer.kind === "prs" && <PrDrawer />}
           {drawer.kind === "actions" && <ActionItemsDrawer />}
+          {drawer.kind === "briefings" && <BriefingsDrawer />}
           {drawer.kind === "env" && <EnvironmentDrawer name={drawer.name} />}
           {drawer.kind === "terminal" && <TerminalDrawer />}
         </motion.aside>

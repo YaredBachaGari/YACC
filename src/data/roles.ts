@@ -9,6 +9,9 @@ export const DEFAULT_MAX_AGENTS = 8;
 /** Hard ceiling for the headcount limit (desks in the office, and a sane cost bound). */
 export const MAX_AGENTS_CEILING = 12;
 export const DEFAULT_CEO_NAME = "CEO";
+/** The lead hires and dismisses without asking, and the CEO hears about it in Briefings. */
+export const defaultAutonomy = () => ({ hire: "notify" as const, dismiss: "notify" as const });
+const AUTONOMY_MODES = ["auto", "notify", "ask"];
 
 /** Lowercase letters, digits and dashes: safe in file names and YAML keys. */
 export const roleSlug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 40) || "role";
@@ -23,7 +26,8 @@ export const LEAD_DUTIES = `You are the lead. The CEO (the human) gives you goal
 - Assign: give each task to an agent whose role fits it and who is running and free (check list_workers).
 - Follow every task to completion. When an agent reports a task blocked, unblock it or reassign it.
 - Review what comes back against the task's done-when. When HQ asks you to review a stage, call approve_work, or request_changes with specific feedback.
-- Compile and summarize: when the work for a request is done, tell the CEO what was done, where the outputs are, and what is still open.
+- Compile and summarize: when the work for a request is done, call report_to_ceo with what was done, where the outputs are (shared files), and any questions. The CEO reads these in Briefings; a reply comes back to you as a message.
+- Keep the project memory current: put the CEO's goals in the brief (update_brief) and record decisions with add_to_memory.
 - You do not do the tasks yourself. Your job is planning, review and reporting.
 
 ## Hiring
@@ -88,11 +92,11 @@ export function managerName(cfg: Pick<HqConfig, "team" | "ceo">, agent: Pick<Age
 // ---------------------------------------------------------------- tools by permission
 
 /** Team MCP tools every agent has, whatever its role. */
-export const COMMON_TOOLS = ["list_workers", "get_status", "list_tasks", "send_message", "ask_user", "request_access"] as const;
+export const COMMON_TOOLS = ["list_workers", "get_status", "list_tasks", "send_message", "ask_user", "request_access", "share_files", "get_shared_files", "list_shared_files", "read_memory", "add_to_memory"] as const;
 
 /** Tools a permission unlocks. `review` and `approve` gain tools with the workflow engine (Phase 2). */
 export const PERMISSION_TOOLS: Record<Permission, readonly string[]> = {
-  plan: ["create_board", "create_task", "update_task"],
+  plan: ["create_board", "create_task", "update_task", "report_to_ceo", "update_brief"],
   assign: ["assign_task"],
   work: ["get_my_task", "set_my_status", "complete_stage"],
   review: ["approve_work", "request_changes"],
@@ -121,6 +125,11 @@ export function normalizeConfig(cfg: HqConfig): string[] {
   cfg.ceo = { name: (cfg.ceo?.name ?? "").trim().slice(0, 40) || DEFAULT_CEO_NAME };
   const max = Number(cfg.limits?.maxAgents);
   cfg.limits = { maxAgents: Number.isFinite(max) ? Math.min(MAX_AGENTS_CEILING, Math.max(2, Math.round(max))) : DEFAULT_MAX_AGENTS };
+  const au = cfg.autonomy ?? defaultAutonomy();
+  cfg.autonomy = {
+    hire: AUTONOMY_MODES.includes(au.hire) ? au.hire : defaultAutonomy().hire,
+    dismiss: AUTONOMY_MODES.includes(au.dismiss) ? au.dismiss : defaultAutonomy().dismiss,
+  };
 
   // Roles: unique ids, clean permissions, the lead role always present.
   const seen = new Set<string>();

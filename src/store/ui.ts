@@ -6,11 +6,12 @@ export type DrawerState =
   | { kind: "prs" }
   | { kind: "env"; name: string }
   | { kind: "actions" }
+  | { kind: "briefings" }
   | { kind: "terminal" }
   | null;
 
 export type AgentTab = "terminal" | "shell" | "task" | "sandbox" | "messages";
-export type SettingsTab = "team" | "roles" | "workflow" | "stack" | "mcp" | "sandbox" | "boards" | "project";
+export type SettingsTab = "team" | "roles" | "memory" | "workflow" | "stack" | "mcp" | "sandbox" | "boards" | "project";
 
 /** Something in the office the camera can fly to. */
 export type FocusTarget =
@@ -92,6 +93,9 @@ export const ui = {
   },
   openActions() {
     useUi.setState({ drawer: { kind: "actions" } });
+  },
+  openBriefings() {
+    useUi.setState({ drawer: { kind: "briefings" } });
   },
   openPrs() {
     useUi.setState({ drawer: { kind: "prs" } });

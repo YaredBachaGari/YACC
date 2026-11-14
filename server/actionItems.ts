@@ -17,6 +17,9 @@ export class ActionItems {
   private file: string;
   private seq = 0;
 
+  /** Set by main: carries out a hire or dismissal the CEO approved, or tells the agent it was declined. */
+  onDecision: ((item: ActionItem, decision: "done" | "dismissed", note: string | null) => void | Promise<void>) | null = null;
+
   constructor(private hub: Hub, private planner: Planner) {
     this.file = join(projectHome(hub.slug), "action-items.json");
     const saved = existsSync(this.file) ? parseCliJson<ActionItem[]>(readFileSync(this.file, "utf8")) : null;
@@ -60,6 +63,29 @@ export class ActionItems {
     return item;
   }
 
+  /** A hire or dismissal waiting for the CEO (autonomy "ask"). */
+  addDecision(kind: "hire" | "dismiss", fromId: string, title: string, details: string, payload: Record<string, unknown>): ActionItem {
+    const item: ActionItem = {
+      id: `ai${Date.now().toString(36)}${++this.seq}`,
+      kind,
+      payload,
+      fromId,
+      taskId: null,
+      title: title.slice(0, 160),
+      details: details.slice(0, 4000),
+      waiting: false,
+      status: "open",
+      note: null,
+      at: new Date().toISOString(),
+      closedAt: null,
+    };
+    this.items.unshift(item);
+    this.save();
+    this.hub.emit({ type: "action.updated", item: { ...item } });
+    this.hub.activity("agent.needs-input", fromId, `${this.hub.name(fromId)} asks: ${item.title}`);
+    return item;
+  }
+
   /** Work waiting for the CEO's sign-off at a stage gate. Closing it approves the work or sends it back. */
   addApproval(fromId: string, taskId: string, title: string, details: string): ActionItem {
     // One open approval per task.
@@ -86,6 +112,17 @@ export class ActionItems {
   resolve(id: string, decision: "done" | "dismissed", note?: string) {
     const item = this.items.find((i) => i.id === id);
     if (!item || item.status !== "open") return;
+    if (item.kind === "hire" || item.kind === "dismiss") {
+      item.status = decision;
+      item.note = note?.trim().slice(0, 1000) || null;
+      item.closedAt = new Date().toISOString();
+      this.save();
+      this.hub.emit({ type: "action.updated", item: { ...item } });
+      void Promise.resolve(this.onDecision?.(item, decision, item.note)).catch((err) =>
+        this.planner.notify(item.fromId, `The CEO approved "${item.title}", but it couldn't be done: ${err instanceof Error ? err.message : err}`),
+      );
+      return;
+    }
     if (item.kind === "approval" && item.taskId) {
       // Approve = "done"; send back = "dismissed", and the note says what to change.
       if (decision === "dismissed" && !note?.trim()) throw new Error("Say what needs to change.");

@@ -46,6 +46,9 @@ const STALE_WORKING_MS = 15_000; // "working" with an idle screen this long = a 
 const SANDBOX_SHELL = `export FORCE_HYPERLINK=1; [ -x ${SANDBOX_BROWSER} ] && export BROWSER=${SANDBOX_BROWSER}; command -v bash >/dev/null && exec bash -l || exec sh -l`;
 
 export class Sessions {
+  /** Set by main: the project memory to put in role files, and the shared-folder copy. */
+  memoryText: (() => string) | null = null;
+  deliverShared: ((agentId: string) => void) | null = null;
   readonly backend = sessionBackend();
   private terms = new Map<string, TermHandle>();
   private sizes = new Map<string, { cols: number; rows: number }>();
@@ -106,7 +109,9 @@ export class Sessions {
       const adapter = adapters[agent.cli];
       // App variables reach the agent in sandbox mode and in Local mode with tmux (not Local on Windows).
       const hasEnvFile = !!this.envFileFor(id) && (agent.mode === "sandbox" || this.backend.persistent);
-      await adapter.writeFiles(dir, agent, hub.snap.config, this.agentToken, { hasEnvFile });
+      await adapter.writeFiles(dir, agent, hub.snap.config, this.agentToken, { hasEnvFile, memory: this.memoryText?.() ?? "" });
+      // Whatever teammates have shared so far, so a new hire starts with it.
+      this.deliverShared?.(id);
       const specs = stackSkills(hub.snap.config.stack);
       if (specs.length || hasHqSkills(hub.slug, dir)) {
         hub.setSession(id, { detail: "Installing agent skills…" });
