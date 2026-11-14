@@ -65,6 +65,17 @@ export interface CeoConfig {
   name: string; // shown in the org chart and to agents
 }
 
+/**
+ * How much the team may do on its own, per kind of action.
+ * auto: just do it. notify: do it, and tell the CEO in Briefings. ask: wait for the CEO's approval in Action items.
+ */
+export type AutonomyMode = "auto" | "notify" | "ask";
+export const AUTONOMY_LABEL: Record<AutonomyMode, string> = { auto: "Do it", notify: "Do it and tell me", ask: "Ask me first" };
+export interface AutonomyConfig {
+  hire: AutonomyMode;
+  dismiss: AutonomyMode;
+}
+
 export interface TeamLimits {
   /** Most agents the team may have, lead included. The lead cannot hire past it. */
   maxAgents: number;
@@ -186,6 +197,7 @@ export interface HqConfig {
   project: ProjectConfig;
   ceo: CeoConfig;
   limits: TeamLimits;
+  autonomy: AutonomyConfig;
   roles: RoleConfig[];
   team: AgentConfig[];
   workflow: WorkflowConfig;
@@ -439,13 +451,48 @@ export interface OfficeSnapshot {
   accessRequests?: AccessRequest[];
   mcp?: McpState;
   actionItems?: ActionItem[];
+  briefings?: Briefing[];
+  sharedFiles?: SharedFile[];
+  memory?: ProjectMemory;
+}
+
+/** A file in the project's shared folder (`shared/` in the repo), which every agent can get. */
+export interface SharedFile {
+  path: string; // relative to shared/
+  by: string; // agent id
+  at: string;
+  bytes: number;
+}
+
+/** A report to the CEO from the lead (report_to_ceo), or a notice from HQ about something the team did. */
+export interface Briefing {
+  id: string;
+  fromId: string; // agent id, or "hq"
+  kind: "report" | "notice";
+  summary: string;
+  /** Paths in the shared folder (or anywhere) where the outputs are. */
+  deliverables: string[];
+  /** Questions for the CEO. A reply goes back to the sender as a message. */
+  questions: string[];
+  at: string;
+  read: boolean;
+  reply: string | null;
+}
+
+/** What every agent should know about the project, kept in .yacc/memory/ in the repo. */
+export interface ProjectMemory {
+  brief: string; // brief.md: goals, audience, constraints
+  decisions: string; // decisions.md: dated lines
+  lessons: string; // lessons.md: dated lines
 }
 
 /** Something an agent needs the user to do outside its sandbox (Team MCP `ask_user`). */
 export interface ActionItem {
   id: string;
   /** "request": an agent asked you for something (ask_user). "approval": work waits for your sign-off at a stage gate. */
-  kind?: "request" | "approval";
+  kind?: "request" | "approval" | "hire" | "dismiss";
+  /** hire / dismiss: what the agent asked to do, carried out if you approve. */
+  payload?: Record<string, unknown>;
   fromId: string; // agent id
   taskId: string | null;
   title: string;
@@ -494,6 +541,7 @@ export interface NewRoleInput {
 export interface OrgPatch {
   ceoName?: string;
   maxAgents?: number;
+  autonomy?: Partial<AutonomyConfig>;
 }
 
 export interface WorkflowPatch {

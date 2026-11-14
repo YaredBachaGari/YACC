@@ -16,6 +16,10 @@ export interface TeamDeps {
   /** Drop queued messages and sandbox bookkeeping for an agent that left. */
   forget(agentId: string): void;
   recheckSetup(): unknown;
+  /** Autonomy "ask": puts the request in the CEO's Action items. */
+  ask?(kind: "hire" | "dismiss", byId: string, title: string, details: string, payload: Record<string, unknown>): void;
+  /** Autonomy "notify": tells the CEO in Briefings. */
+  notice?(byId: string, text: string): void;
 }
 
 export interface AddAgentInput {
@@ -108,7 +112,8 @@ export class Team {
    * CEO's headcount limit. A role that doesn't exist yet is created with the `work` permission only:
    * a hire can never hand out planning, hiring or approval powers.
    */
-  hire(byId: string, input: HireInput): string {
+  /** `approved`: the CEO already said yes (autonomy "ask"), so don't ask again. */
+  hire(byId: string, input: HireInput, approved = false): string {
     const by = this.hub.cfg(byId);
     if (!by || !can(this.cfg, by, "hire")) throw new Error("Your role can't hire. Ask the lead with send_message.");
     const reason = input.reason?.trim();
@@ -125,10 +130,17 @@ export class Team {
     let role: RoleConfig | undefined = findRole(this.cfg, wanted);
     let created = false;
     if (role?.id === LEAD_ROLE_ID) throw new Error("A team has one lead. Hire into another role.");
+    if (!role && (input.instructions?.trim().length ?? 0) < 40)
+      throw new Error(`There is no "${wanted}" role yet (roles: ${this.cfg.roles.map((r) => r.title).join(", ")}). To create it, pass instructions: what this role does, how it should work, and what a finished result looks like.`);
+    const mode = this.cfg.autonomy.hire;
+    if (mode === "ask" && !approved) {
+      if (!this.deps.ask) throw new Error("Hiring needs the CEO's approval, and HQ can't ask right now.");
+      const title = `${by.name} wants to hire a ${role?.title ?? wanted}${input.temporary ? " (temporary)" : ""}`;
+      this.deps.ask("hire", by.id, title, [`Why: ${reason}`, role ? "" : `New role. Instructions:\n${input.instructions!.trim().slice(0, 1500)}`].filter(Boolean).join("\n\n"), { input: { ...input } });
+      return `The CEO has asked to approve hires. Your request to hire a ${role?.title ?? wanted} is in their Action items; HQ tells you when they answer. Carry on with what you can meanwhile.`;
+    }
     if (!role) {
       const instructions = input.instructions?.trim() ?? "";
-      if (instructions.length < 40)
-        throw new Error(`There is no "${wanted}" role yet (roles: ${this.cfg.roles.map((r) => r.title).join(", ")}). To create it, pass instructions: what this role does, how it should work, and what a finished result looks like.`);
       // The hirer says what the role does; how to take and report a task is added to every role file (agentFiles.ts).
       role = { id: freeRoleId(this.cfg, wanted), title: wanted.slice(0, 40), can: ["work"], instructions: instructions.slice(0, 8000) };
       this.cfg.roles.push(role);
@@ -144,14 +156,16 @@ export class Team {
       hiredBy: by.id,
       temporary: !!input.temporary,
     });
-    this.hub.activity("config", by.id, `${by.name} hired ${agent.name} (${role.title}${agent.temporary ? ", temporary" : ""}${created ? ", new role" : ""}): ${reason.slice(0, 200)}`);
+    const what = `${by.name} hired ${agent.name} (${role.title}${agent.temporary ? ", temporary" : ""}${created ? ", new role" : ""}): ${reason.slice(0, 200)}`;
+    this.hub.activity("config", by.id, what);
+    if (mode === "notify") this.deps.notice?.(by.id, what);
     void Promise.resolve(this.deps.start(agent.id)).catch(() => {});
     const left = max - this.cfg.team.length;
     return `Hired ${agent.name} (id ${agent.id}) as ${role.title}${created ? ", a new role" : ""}. Their session is starting; a new sandbox can take a few minutes. Check list_workers until running is true, then assign_task. ${left} more ${left === 1 ? "hire fits" : "hires fit"} under the headcount limit.${agent.temporary ? ` ${agent.name} is temporary: dismiss them with dismiss_agent when their work is done.` : ""}`;
   }
 
   /** The lead lets go of an agent it (or another agent) hired. Agents the CEO added are the CEO's to remove. */
-  async dismiss(byId: string, agentRef: string, reason: string): Promise<string> {
+  async dismiss(byId: string, agentRef: string, reason: string, approved = false): Promise<string> {
     const by = this.hub.cfg(byId);
     if (!by || !can(this.cfg, by, "hire")) throw new Error("Your role can't dismiss agents.");
     const r = agentRef.trim().toLowerCase();
@@ -161,9 +175,17 @@ export class Team {
     if (agent.roleId === LEAD_ROLE_ID) throw new Error("The lead can't be dismissed.");
     if (!agent.hiredBy) throw new Error(`${agent.name} was added by the CEO, so only the CEO can remove them. If they are no longer needed, tell the CEO with ask_user.`);
     const role = roleOf(this.cfg, agent)?.title ?? agent.roleId;
+    const mode = this.cfg.autonomy.dismiss;
+    if (mode === "ask" && !approved) {
+      if (!this.deps.ask) throw new Error("Dismissing needs the CEO's approval, and HQ can't ask right now.");
+      this.deps.ask("dismiss", by.id, `${by.name} wants to dismiss ${agent.name} (${role})`, `Why: ${reason?.trim() || "(no reason given)"}\n\nTheir sandbox is removed; their folder is kept.`, { agent: agent.id, reason });
+      return `The CEO has asked to approve dismissals. Your request is in their Action items; HQ tells you when they answer.`;
+    }
     // The sandbox goes; the folder stays, so no work is lost.
     const { freedTasks } = await this.remove(agent.id, { deleteSandbox: true, deleteFolder: false });
-    this.hub.activity("config", by.id, `${by.name} dismissed ${agent.name} (${role})${reason?.trim() ? `: ${reason.trim().slice(0, 200)}` : ""}. Their folder is kept.`);
+    const what = `${by.name} dismissed ${agent.name} (${role})${reason?.trim() ? `: ${reason.trim().slice(0, 200)}` : ""}. Their folder is kept.`;
+    this.hub.activity("config", by.id, what);
+    if (mode === "notify") this.deps.notice?.(by.id, what);
     return `Dismissed ${agent.name}.${freedTasks.length ? ` Their unfinished tasks are unassigned again: ${freedTasks.join(", ")}.` : ""}`;
   }
 }

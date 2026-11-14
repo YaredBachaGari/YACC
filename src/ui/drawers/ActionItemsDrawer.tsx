@@ -156,6 +156,16 @@ function Item({ item, from, now }: { item: ActionItem; from?: { id: string; name
             Send back
           </button>
         </div>
+      ) : item.kind === "hire" || item.kind === "dismiss" ? (
+        <div className="mt-2 flex items-center gap-2">
+          <input className="field min-w-0 flex-1 text-[13px]" value={note} placeholder="Note for the lead (optional)" onChange={(e) => setNote(e.target.value)} />
+          <button className="btn px-2 text-[12px]" onClick={() => officeActions.resolveActionItem(item.id, "done", note)}>
+            Approve
+          </button>
+          <button className="btn px-2 text-[12px]" onClick={() => officeActions.resolveActionItem(item.id, "dismissed", note)}>
+            Decline
+          </button>
+        </div>
       ) : (
         <div className="mt-2 flex items-center gap-2">
           <input

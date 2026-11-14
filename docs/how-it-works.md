@@ -213,3 +213,13 @@ workflow:
 ```
 
 With `deliverable: files`, HQ doesn't use GitHub at all: no PR polling, no GitHub setup checks, no PRs button. A project with a GitHub remote starts with the coding flow (one Build stage ending in a pull request); one without starts with a Do stage that the lead reviews.
+
+## Shared files, memory, briefings and autonomy
+
+**Shared files.** Each agent works in its own folder, and a sandboxed agent can see nothing else. `shared/` in your repo is how work passes between them: an agent calls `share_files` with paths in its folder and HQ copies them there (no links out of the folder, no `..`, at most 50 MB a call). When work is handed to an agent, HQ copies the shared folder into `shared/` in that agent's folder (kept out of its git); `get_shared_files` fetches the latest. You see the list in Briefings.
+
+**Project memory.** `.yacc/memory/brief.md`, `decisions.md` and `lessons.md` in your repo. Every agent gets the brief and the newest decisions and lessons in its role file at start, so a new hire starts with the context. Agents add dated lines with `add_to_memory`; the lead (any role with `plan`) rewrites the brief with `update_brief`; you edit all three in Settings → Memory.
+
+**Briefings.** The lead reports with `report_to_ceo`: a summary, where the outputs are, and questions. Reports appear under Briefings in the top bar; your reply goes to the lead as a message. Notices about things the team did on its own appear there too.
+
+**Autonomy** (`autonomy` in `config.yml`, Settings → Team): for hiring and for dismissing, choose `auto` (just do it), `notify` (do it and tell me in Briefings; the default) or `ask` (wait for my approval in Action items). The headcount limit applies in every case. Website access always asks.

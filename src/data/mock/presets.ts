@@ -1,9 +1,9 @@
 import { CEO_ID, LEAD_ROLE_ID, type AgentConfig, type Board, type HqConfig, type SandboxSettings, type Task } from "../types";
 import { defaultWorkflowParts } from "../workflow";
-import { DEFAULT_CEO_NAME, DEFAULT_MAX_AGENTS, DEVELOPER_INSTRUCTIONS, leadRole, normalizeConfig, roleSlug } from "../roles";
+import { defaultAutonomy, DEFAULT_CEO_NAME, DEFAULT_MAX_AGENTS, DEVELOPER_INSTRUCTIONS, leadRole, normalizeConfig, roleSlug } from "../roles";
 
 /** A preset's settings, before the org parts every config has are filled in. */
-export type PresetConfig = Omit<HqConfig, "ceo" | "limits" | "roles">;
+export type PresetConfig = Omit<HqConfig, "ceo" | "limits" | "roles" | "autonomy">;
 
 /** Adds the CEO, the headcount limit and one role per job title to a preset. */
 export function completeConfig(preset: PresetConfig): HqConfig {
@@ -13,6 +13,7 @@ export function completeConfig(preset: PresetConfig): HqConfig {
     ...preset,
     ceo: { name: DEFAULT_CEO_NAME },
     limits: { maxAgents: Math.max(DEFAULT_MAX_AGENTS, preset.team.length) },
+    autonomy: defaultAutonomy(),
     roles: [leadRole(), ...[...titles].map(([id, title]) => ({ id, title, can: ["work" as const], instructions: DEVELOPER_INSTRUCTIONS }))],
   };
   normalizeConfig(cfg);

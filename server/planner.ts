@@ -27,6 +27,8 @@ export class Planner {
   private seq = 0;
   /** Set by main: the user's action items (Team MCP `ask_user`). */
   actions: ActionItems | null = null;
+  /** Set by main: copies the shared folder into an agent's folder when work is handed to it. */
+  shared: { deliverQuietly(agentId: string): void } | null = null;
 
   constructor(private hub: Hub, private inbox: Inbox) {}
 
@@ -127,6 +129,7 @@ export class Planner {
     const by = byId === "you" ? "The user (your human)" : this.hub.name(byId);
     const text = `${by} assigned you ${task.id} (${task.title}). ${this.hub.repo.github ? "Pull main, start" : "Start"} ${task.id}. Call the hq get_my_task tool for the details.`;
     this.record(byId, agentId, `Start ${task.id}: ${task.title}`);
+    this.shared?.deliverQuietly(agentId);
     this.inbox.push(agentId, { fromId: byId, kind: "assign", text });
     return task;
   }
@@ -237,6 +240,7 @@ export class Planner {
     this.changed(task);
     const verb = stage.gate === "review" ? "review" : "sign off";
     this.hub.activity("task.started", agentId, `${who} sent ${task.id} to ${reviewer.name} to ${verb} (${stage.name})`);
+    this.shared?.deliverQuietly(reviewer.id);
     this.notify(
       reviewer.id,
       `Please ${verb} ${task.id} (${task.title}), stage ${stage.name}. ${who} says: ${clean ?? "(no note)"}${task.doneWhen ? ` Done when: ${task.doneWhen}.` : ""} Check it, then call approve_work, or request_changes with what to fix.`,
@@ -310,6 +314,7 @@ export class Planner {
     this.hub.activity("task.assigned", byId, `${summary}. ${task.id} moved to ${next.name}: ${owner.name}`);
     if (!this.currentTask(owner.id) || this.currentTask(owner.id)?.id === task.id) this.hub.setStatus(owner.id, { currentTaskId: task.id });
     const busy = this.currentTask(owner.id)?.id !== task.id;
+    this.shared?.deliverQuietly(owner.id);
     const handoff = task.note ? ` From the last stage: ${task.note}` : "";
     this.inbox.push(owner.id, {
       fromId: "hq",

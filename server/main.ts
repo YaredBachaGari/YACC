@@ -25,6 +25,9 @@ import { Sessions } from "./sessions";
 import { runSetupChecks } from "./setup";
 import { ConfigError, loadConfig, loadPlan, watchConfig } from "./store";
 import { Team } from "./team";
+import { Briefings } from "./briefings";
+import { Memory } from "./memory";
+import { SharedFiles } from "./shared";
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -76,7 +79,15 @@ async function main() {
   void mcp.refresh();
   const planner = new Planner(hub, inbox);
   planner.actions = new ActionItems(hub, planner);
+  const briefings = new Briefings(hub, planner);
+  const shared = new SharedFiles(hub);
+  const memory = new Memory(hub);
+  planner.shared = shared;
+  sessions.memoryText = () => memory.forRoleFile();
+  sessions.deliverShared = (id) => shared.deliverQuietly(id);
   const team = new Team(hub, {
+    ask: (kind, byId, title, details, payload) => planner.actions!.addDecision(kind, byId, title, details, payload),
+    notice: (byId, text) => briefings.notice(byId, text),
     start: (id) => sessions.start(id),
     removeResources: (id, opts) => sessions.removeResources(id, opts),
     forget: (id) => {
@@ -85,6 +96,13 @@ async function main() {
     },
     recheckSetup: () => sessions.recheckSetup(),
   });
+  // A hire or dismissal the CEO approved (or declined) in Action items.
+  planner.actions.onDecision = async (item, decision, note) => {
+    const p = item.payload ?? {};
+    if (decision === "dismissed") return planner.notify(item.fromId, `The CEO declined: ${item.title}.${note ? ` Their note: ${note}` : ""}`);
+    const result = item.kind === "hire" ? team.hire(item.fromId, p.input as Parameters<Team["hire"]>[1], true) : await team.dismiss(item.fromId, String(p.agent), String(p.reason ?? ""), true);
+    planner.notify(item.fromId, `The CEO approved: ${item.title}. ${result}${note ? ` Their note: ${note}` : ""}`);
+  };
 
   const root = dirname(dirname(fileURLToPath(import.meta.url)));
   const distDir = join(root, "dist");
@@ -97,12 +115,13 @@ async function main() {
     inbox,
     planner,
     team,
+    mcpExtras: { briefings, shared, memory },
     port,
     browserToken: uiToken,
     agentToken: token,
     distDir: dev ? null : distDir,
     allowedOrigins: [uiOrigin, `http://127.0.0.1:${uiPort}`, `http://localhost:${port}`, `http://127.0.0.1:${port}`],
-    commands: makeCommands(hub, sessions, planner, sbx, mcp, team),
+    commands: makeCommands(hub, sessions, planner, sbx, mcp, team, { briefings, memory }),
   });
   // Settings edited by hand in .yacc/config.yml (or roles/*.md) are picked up while HQ runs.
   const stopWatching = watchConfig(repo.root, (result) => {

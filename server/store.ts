@@ -11,7 +11,7 @@ import { parse as parseYaml, stringify as toYaml } from "yaml";
 import { z } from "zod";
 import { CEO_ID, LEAD_ROLE_ID, PERMISSIONS, type AgentConfig, type Board, type HqConfig, type RoleConfig, type SandboxSettings, type Task } from "../src/data/types";
 import { LEAD_NAME, WORKER_NAMES } from "../src/data/names";
-import { DEFAULT_CEO_NAME, DEFAULT_MAX_AGENTS, DEVELOPER_INSTRUCTIONS, defaultRoles, freeRoleId, normalizeConfig, roleSlug } from "../src/data/roles";
+import { defaultAutonomy, DEFAULT_CEO_NAME, DEFAULT_MAX_AGENTS, DEVELOPER_INSTRUCTIONS, defaultRoles, freeRoleId, normalizeConfig, roleSlug } from "../src/data/roles";
 import { codingStages, defaultWorkflowParts } from "../src/data/workflow";
 import { GATES } from "../src/data/types";
 import { slugify } from "./paths";
@@ -75,6 +75,7 @@ function defaultConfig(repo: RepoInfo, port: number): HqConfig {
     project: { id: slugify(repo.name), name: repo.name, repo: repo.github ?? repo.name, path: repo.root, hqPort: port },
     ceo: { name: DEFAULT_CEO_NAME },
     limits: { maxAgents: DEFAULT_MAX_AGENTS },
+    autonomy: defaultAutonomy(),
     roles: defaultRoles(),
     team: [lead, newAgent(slugify(WORKER_NAMES[0]), WORKER_NAMES[0], "developer", "#29adff", lead.id)],
     workflow: {
@@ -138,6 +139,9 @@ const fileSchema = z.object({
   }),
   ceo: z.object({ name: z.string().default(DEFAULT_CEO_NAME) }).default({ name: DEFAULT_CEO_NAME }),
   limits: z.object({ maxAgents: z.number().int().min(2).default(DEFAULT_MAX_AGENTS) }).default({ maxAgents: DEFAULT_MAX_AGENTS }),
+  autonomy: z
+    .object({ hire: z.enum(["auto", "notify", "ask"]).default("notify"), dismiss: z.enum(["auto", "notify", "ask"]).default("notify") })
+    .default(defaultAutonomy()),
   roles: z.record(z.string(), roleSchema).default({}),
   team: z.array(agentSchema).min(1, "The team needs at least one agent (the lead)."),
   workflow: z.object({
@@ -189,6 +193,7 @@ export function serializeConfig(cfg: HqConfig): { yaml: string; files: Record<st
     project,
     ceo: cfg.ceo,
     limits: cfg.limits,
+    autonomy: cfg.autonomy,
     roles,
     team: cfg.team.map((a) => ({
       id: a.id,
@@ -245,6 +250,7 @@ export function parseConfig(text: string, readFile: (relPath: string) => string 
     project: { id: slugify(f.project.id ?? f.project.name), name: f.project.name, repo: f.project.repo, path: "", hqPort: f.project.hqPort, ...(f.project.exportPlan !== undefined ? { exportPlan: f.project.exportPlan } : {}), ...(f.project.officeName ? { officeName: f.project.officeName } : {}) },
     ceo: f.ceo,
     limits: f.limits,
+    autonomy: f.autonomy,
     roles,
     team: f.team.map((a) => ({
       id: a.id,
@@ -285,7 +291,7 @@ interface LegacyAgent extends Omit<AgentConfig, "roleId" | "reportsTo"> {
 
 /** Turns the old lead/worker config into roles: the lead flag becomes the lead role, each job title a role. */
 export function migrateLegacy(found: Omit<HqConfig, "roles" | "ceo" | "limits" | "team"> & { team: LegacyAgent[] }): HqConfig {
-  const cfg = { ...found, ceo: { name: DEFAULT_CEO_NAME }, limits: { maxAgents: Math.max(DEFAULT_MAX_AGENTS, found.team.length) }, roles: defaultRoles() } as HqConfig;
+  const cfg = { ...found, ceo: { name: DEFAULT_CEO_NAME }, autonomy: defaultAutonomy(), limits: { maxAgents: Math.max(DEFAULT_MAX_AGENTS, found.team.length) }, roles: defaultRoles() } as HqConfig;
   const lead = found.team.find((a) => a.isLead) ?? found.team[0];
   for (const a of found.team) {
     a.workspacePath ??= null;

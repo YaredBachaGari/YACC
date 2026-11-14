@@ -1,6 +1,6 @@
 // Browser commands → server actions. Names match OfficeDataSource methods.
 
-import { CEO_ID, LEAD_ROLE_ID, PERMISSIONS, SERVICE_KEYS, type AgentCli, type AgentConfig, type AgentPatch, type NewRoleInput, type OrgPatch, type ReviewTool, type RolePatch, type WelcomeInput, type NewMcpServer, type Board, type NewAgentInput, type ProjectConfig, type RemoveAgentOptions, type RoleConfig, type SandboxSettings, type SetupCheckId, type WorkflowPatch } from "../src/data/types";
+import { CEO_ID, LEAD_ROLE_ID, PERMISSIONS, SERVICE_KEYS, type AgentCli, type AgentConfig, type AgentPatch, type NewRoleInput, type OrgPatch, type ProjectMemory, type ReviewTool, type RolePatch, type WelcomeInput, type NewMcpServer, type Board, type NewAgentInput, type ProjectConfig, type RemoveAgentOptions, type RoleConfig, type SandboxSettings, type SetupCheckId, type WorkflowPatch } from "../src/data/types";
 import { DEVELOPER_INSTRUCTIONS, MAX_AGENTS_CEILING, WORKER_BASE_INSTRUCTIONS, defaultRoles, findRole, freeRoleId, leadOf } from "../src/data/roles";
 import { LEAD_NAME, OFFICE_NAME_MAX } from "../src/data/names";
 import { STACK_CATEGORIES, stackSkills, stackTool, type StackChoice, type StackConfig } from "../src/data/stack";
@@ -15,6 +15,8 @@ import type { SbxMcp } from "./sbxMcp";
 import type { Sessions } from "./sessions";
 import { newAgent, removeRoleFile } from "./store";
 import type { Team } from "./team";
+import type { Briefings } from "./briefings";
+import type { Memory } from "./memory";
 import { mergeByNotice } from "./githubSync";
 
 /** A stack from the browser, checked against the catalog. Null when nothing is chosen. */
@@ -46,7 +48,7 @@ const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(
 const str = (v: unknown, max = 2000) => (typeof v === "string" ? v.slice(0, max) : "");
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
 
-export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx: Sbx, mcp: SbxMcp, teamOps: Team) {
+export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx: Sbx, mcp: SbxMcp, teamOps: Team, extra: { briefings: Briefings; memory: Memory }) {
   /** Runs an sbx change and reports failures in the activity feed. */
   const attempt = async (agentId: string | null, what: string, fn: () => Promise<void>) => {
     try {
@@ -192,6 +194,7 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx
       const p = (patch ?? {}) as OrgPatch;
       const cfg = hub.snap.config;
       if (typeof p.ceoName === "string" && p.ceoName.trim()) cfg.ceo.name = str(p.ceoName, 40).trim();
+      if (p.autonomy) cfg.autonomy = { ...cfg.autonomy, ...p.autonomy }; // normalizeConfig drops anything unknown
       if (typeof p.maxAgents === "number" && Number.isFinite(p.maxAgents)) {
         // Never below the team you already have: lowering the limit doesn't fire anyone.
         cfg.limits.maxAgents = Math.max(cfg.team.length, 2, Math.min(MAX_AGENTS_CEILING, Math.round(p.maxAgents)));
@@ -247,6 +250,17 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx
       await sbx.refresh();
     },
     refreshSbx: () => sbx.refresh(),
+
+    replyBriefing: (id, text) => extra.briefings.reply(str(id, 40), str(text, 2000)),
+    markBriefingsRead: () => extra.briefings.markAllRead(),
+    updateMemory: (patch) => {
+      const p = (patch ?? {}) as Partial<ProjectMemory>;
+      extra.memory.set({
+        ...(typeof p.brief === "string" ? { brief: str(p.brief, 40_000) } : {}),
+        ...(typeof p.decisions === "string" ? { decisions: str(p.decisions, 40_000) } : {}),
+        ...(typeof p.lessons === "string" ? { lessons: str(p.lessons, 40_000) } : {}),
+      });
+    },
 
     resolveActionItem: (id, decision, note) => {
       const d = decision === "done" || decision === "dismissed" ? decision : null;

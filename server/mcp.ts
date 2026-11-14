@@ -13,6 +13,9 @@ import type { Planner } from "./planner";
 import { can, managerName, roleOf, toolsFor } from "../src/data/roles";
 import type { Permission } from "../src/data/types";
 import type { Team } from "./team";
+import type { Briefings } from "./briefings";
+import type { Memory } from "./memory";
+import { SHARED_DIR, type SharedFiles } from "./shared";
 import { stageOf } from "../src/data/workflow";
 
 type Result = { content: { type: "text"; text: string }[]; isError?: boolean };
@@ -31,7 +34,14 @@ function guard<A>(fn: (args: A) => Result | Promise<Result>) {
   };
 }
 
-function buildServer(hub: Hub, planner: Planner, team: Team, me: string): McpServer {
+/** Briefings, shared files and project memory, for the tools that use them. */
+export interface McpExtras {
+  briefings: Briefings;
+  shared: SharedFiles;
+  memory: Memory;
+}
+
+function buildServer(hub: Hub, planner: Planner, team: Team, extras: McpExtras, me: string): McpServer {
   const base = new McpServer({ name: "hq", version: "0.2.0" });
   const cfg = hub.snap.config;
   const allowed = new Set(toolsFor(roleOf(cfg, hub.cfg(me) ?? { roleId: "" })));
@@ -249,6 +259,84 @@ function buildServer(hub: Hub, planner: Planner, team: Team, me: string): McpSer
   );
 
   server.registerTool(
+    "share_files",
+    {
+      description: `Copy files or folders from your folder into the project's shared folder, so teammates (and the CEO) can use them. Do this for every output the next stage needs, then mention the paths in complete_stage's note. Up to 50 MB at a time.`,
+      inputSchema: { paths: z.array(z.string()).describe("Paths relative to your folder, e.g. drafts/script.md or research/") },
+    },
+    guard(({ paths }: { paths: string[] }) => {
+      const done = extras.shared.share(me, paths);
+      return ok(`Shared ${done.length} file${done.length === 1 ? "" : "s"}: ${done.slice(0, 20).join(", ")}${done.length > 20 ? "…" : ""}. Teammates find them in ${SHARED_DIR}/ in their folders.`);
+    }),
+  );
+
+  server.registerTool(
+    "get_shared_files",
+    {
+      description: `Copy the project's shared files into ${SHARED_DIR}/ in your folder (all of them, or the paths you name). HQ also does this when work is handed to you.`,
+      inputSchema: { paths: z.array(z.string()).optional().describe("Shared paths to get. Left out: everything.") },
+    },
+    guard(({ paths }: { paths?: string[] }) => {
+      const got = extras.shared.deliver(me, paths);
+      return ok(got.length ? `Copied ${got.length} file${got.length === 1 ? "" : "s"} into ${SHARED_DIR}/ in your folder.` : "Nothing is shared yet.");
+    }),
+  );
+
+  server.registerTool(
+    "list_shared_files",
+    { description: "What is in the project's shared folder: each file's path, who shared it, when, and its size." },
+    guard(() => ok(extras.shared.list().map((f) => ({ ...f, by: f.by ? hub.name(f.by) : "" })))),
+  );
+
+  server.registerTool(
+    "read_memory",
+    { description: "The project memory: the brief (goals, audience, constraints), decisions and lessons. Read it before starting new work." },
+    guard(() => ok(extras.memory.read())),
+  );
+
+  server.registerTool(
+    "add_to_memory",
+    {
+      description: "Add one line to the project memory, for everyone now and later: a decision (something agreed that others must follow) or a lesson (what worked or didn't).",
+      inputSchema: { kind: z.enum(["decision", "lesson"]), text: z.string().describe("One or two sentences") },
+    },
+    guard(({ kind, text }: { kind: "decision" | "lesson"; text: string }) => ok(`Added: ${extras.memory.add(me, kind, text)}`)),
+  );
+
+  server.registerTool(
+    "update_brief",
+    {
+      description: "Replace the project brief (goals, audience, constraints, what done looks like) with the text you give. Write it from what the CEO asked for. Every agent reads it at start.",
+      inputSchema: { text: z.string().describe("The whole brief, in Markdown") },
+    },
+    guard(({ text }: { text: string }) => {
+      needs("plan");
+      if (!text?.trim()) throw new Error("The brief can't be empty.");
+      extras.memory.set({ brief: text.trim() + "\n" });
+      hub.activity("config", me, `${hub.name(me)} updated the project brief`);
+      return ok("Brief updated. Agents get it the next time they start; tell running ones with send_message if it matters now.");
+    }),
+  );
+
+  server.registerTool(
+    "report_to_ceo",
+    {
+      description:
+        "Report to the CEO: what was done, where the outputs are, and any questions. It appears in their Briefings. Use it when a request from the CEO is finished, or when you need decisions. Replies come back to you as messages.",
+      inputSchema: {
+        summary: z.string().describe("What was done and what is still open, in plain words"),
+        deliverables: z.array(z.string()).optional().describe("Where the outputs are, e.g. shared/scripts/scam-calls.md"),
+        questions: z.array(z.string()).optional().describe("Decisions you need from the CEO"),
+      },
+    },
+    guard(({ summary, deliverables, questions }: { summary: string; deliverables?: string[]; questions?: string[] }) => {
+      needs("plan");
+      extras.briefings.report(me, summary, deliverables, questions);
+      return ok("Sent. It is in the CEO's Briefings; their reply comes to you as a message.");
+    }),
+  );
+
+  server.registerTool(
     "hire_agent",
     {
       description:
@@ -328,8 +416,8 @@ function buildServer(hub: Hub, planner: Planner, team: Team, me: string): McpSer
 }
 
 /** Handles one MCP HTTP request for an already-authenticated agent. */
-export async function handleMcp(hub: Hub, planner: Planner, team: Team, agentId: string, req: IncomingMessage, res: ServerResponse, body: unknown) {
-  const server = buildServer(hub, planner, team, agentId);
+export async function handleMcp(hub: Hub, planner: Planner, team: Team, extras: McpExtras, agentId: string, req: IncomingMessage, res: ServerResponse, body: unknown) {
+  const server = buildServer(hub, planner, team, extras, agentId);
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   res.on("close", () => {
     void transport.close();

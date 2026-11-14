@@ -38,6 +38,7 @@ export function TopBar() {
   const openPrs = snap.pullRequests.filter((p) => !p.merged && !p.closed).length;
 
   // Teams whose work is files have no pull requests to show.
+  const unreadBriefings = useOffice((st) => (st.snap?.briefings ?? []).filter((b) => !b.read).length);
   const usesPrs = useOffice((st) => st.snap?.config.workflow.deliverable !== "files");
   return (
     <header className="panel fixed left-4 right-4 top-[10px] z-10 flex h-[50px] items-center gap-4 px-3">
@@ -120,6 +121,14 @@ export function TopBar() {
           title="Everything waiting on you"
         >
           Action items{attention ? ` · ${attention}` : ""}
+        </button>
+        <button
+          className="btn text-[14px]"
+          style={unreadBriefings ? { background: "#c2f0ff" } : undefined}
+          onClick={() => ui.openBriefings()}
+          title="Reports from the lead, and what the team did on its own"
+        >
+          Briefings{unreadBriefings ? ` · ${unreadBriefings}` : ""}
         </button>
         <button className="btn text-[14px]" onClick={() => ui.openBoards(planBoardId ?? undefined)}>
           Boards
