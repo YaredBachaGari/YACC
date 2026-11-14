@@ -24,6 +24,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      - name: Windows PATH refresh
+        run: npx tsx scripts/path-test.ts
       - name: Roles, YAML settings and hiring
         run: npx tsx scripts/roles-test.ts
       - name: Session backends (fake agent)

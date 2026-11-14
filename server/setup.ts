@@ -5,7 +5,7 @@ import { arch, cpus, platform, release, totalmem } from "node:os";
 import type { AgentConfig, SetupCheck, SetupFix, SetupState } from "../src/data/types";
 import { usesTmux } from "./backends";
 import { parseCliJson, sandboxList } from "./lib/json";
-import { has, run } from "./lib/exec";
+import { has, refreshWindowsPath, run } from "./lib/exec";
 import type { RepoInfo } from "./repo";
 
 const SBX_DOCS = "https://docs.docker.com/ai/sandboxes/install/";
@@ -160,11 +160,13 @@ function checkRemote(repo: RepoInfo): Check {
   };
 }
 
-async function checkGithubSecret(sbxOk: boolean): Promise<Check> {
+async function checkGithubSecret(sbxOk: boolean, ghSignedIn: boolean): Promise<Check> {
   const base = { id: "github-secret" as const, label: "GitHub access inside sandboxes", neededFor: "sandbox" as const };
   if (!sbxOk) return { ...base, status: "missing", detail: "Waiting for sbx.", fix: null };
   const r = await run("sbx", ["secret", "ls"], { timeoutMs: 10_000 });
   if (r.ok && /\bgithub\b/.test(r.stdout)) return { ...base, status: "ok", detail: "Stored in Docker's secret store; injected by the proxy.", fix: null };
+  // The command below reads the token from the GitHub CLI: without a signed-in gh it fails with "verify command failed".
+  if (!ghSignedIn) return { ...base, status: "missing", detail: "Waiting for the GitHub CLI: install it and sign in (below) first. This step reads your token from it.", fix: null };
   return {
     ...base,
     status: "missing",
@@ -196,10 +198,12 @@ async function checkOpenAiSecret(sbxOk: boolean): Promise<Check> {
 
 /** `team` adds the Codex checks only when the team has Codex agents. */
 export async function runSetupChecks(repo: RepoInfo, team: AgentConfig[] = []): Promise<SetupState> {
+  // So "Check again" sees a tool that was installed while HQ was running (Windows keeps the old PATH otherwise).
+  await refreshWindowsPath();
   const brew = os === "darwin" && (await has("brew"));
   const [osCheck, sbx, tmux, claude, gh] = await Promise.all([checkOs(), checkSbx(brew), checkTmux(brew), checkClaude(), checkGh(brew)]);
   const sbxOk = sbx.status === "ok";
-  const [login, secret] = await Promise.all([checkSbxLogin(sbxOk), checkGithubSecret(sbxOk)]);
+  const [login, secret] = await Promise.all([checkSbxLogin(sbxOk), checkGithubSecret(sbxOk, gh.status === "ok")]);
   const policy = await checkSbxPolicy(login.status === "ok");
   const checks: SetupCheck[] = [osCheck, sbx, login, policy, secret, tmux, claude, gh, checkRemote(repo)];
   const codexAgents = team.filter((a) => a.cli === "codex");
