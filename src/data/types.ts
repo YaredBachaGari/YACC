@@ -435,6 +435,8 @@ export interface SetupState {
   checkedAt: string;
 }
 
+import type { Template } from "./templates";
+
 export interface OfficeSnapshot {
   /** True until the first-run welcome is finished for this repo (real HQ only). */
   welcome?: boolean;
@@ -452,6 +454,8 @@ export interface OfficeSnapshot {
   mcp?: McpState;
   actionItems?: ActionItem[];
   briefings?: Briefing[];
+  /** Templates the welcome can start from (built-in, this project's and yours). */
+  templates?: Template[];
   sharedFiles?: SharedFile[];
   memory?: ProjectMemory;
 }
@@ -517,6 +521,8 @@ export interface NewAgentInput {
 
 /** First-run choices from the welcome screen. */
 export interface WelcomeInput {
+  /** Template to start from (Template.id). Left out: the Software Team. */
+  templateId?: string;
   projectName: string;
   lead: { name: string; cli: AgentCli };
   workers: { name: string; role: string; cli: AgentCli }[];

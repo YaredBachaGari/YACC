@@ -194,6 +194,7 @@ export const officeActions = {
   replyBriefing: source.replyBriefing.bind(source),
   markBriefingsRead: source.markBriefingsRead.bind(source),
   updateMemory: source.updateMemory.bind(source),
+  saveTemplate: source.saveTemplate.bind(source),
   addRole: source.addRole.bind(source),
   updateRole: source.updateRole.bind(source),
   removeRole: source.removeRole.bind(source),

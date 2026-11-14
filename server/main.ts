@@ -28,6 +28,7 @@ import { Team } from "./team";
 import { Briefings } from "./briefings";
 import { Memory } from "./memory";
 import { SharedFiles } from "./shared";
+import { listTemplates } from "./templates";
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -82,6 +83,9 @@ async function main() {
   const briefings = new Briefings(hub, planner);
   const shared = new SharedFiles(hub);
   const memory = new Memory(hub);
+  const found = listTemplates(repo.root);
+  hub.snap.templates = found.templates;
+  for (const p of found.problems) hub.activity("config", null, `A template couldn't be read: ${p}`);
   planner.shared = shared;
   sessions.memoryText = () => memory.forRoleFile();
   sessions.deliverShared = (id) => shared.deliverQuietly(id);

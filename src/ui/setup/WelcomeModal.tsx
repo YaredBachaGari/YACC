@@ -1,14 +1,14 @@
 import { useState } from "react";
 import { LEAD_NAME, nextAgentName, WORKER_NAMES } from "../../data/names";
 import { EMPTY_STACK, frameworks, STACK_CATEGORIES, toolsIn, type StackConfig } from "../../data/stack";
-import type { AgentCli, ReviewTool } from "../../data/types";
+import { BUILT_IN_TEMPLATES, ROLE_LIBRARY, type Template } from "../../data/templates";
+import { LEAD_ROLE_ID, type AgentCli, type ReviewTool } from "../../data/types";
 import { officeActions, reviewToolLabel, useOffice } from "../../store/office";
 import { agentPalette } from "../../theme/tokens";
 import { Field, Portrait } from "../kit";
 import { CliSelect } from "../settings/TeamSettings";
 
-/** Job titles offered for a worker. Each becomes a role you can edit under Settings → Roles. */
-const ROLE_SUGGESTIONS = ["Developer", "QA", "Designer", "Docs", "DevOps", "Security"];
+const SOURCE_LABEL: Record<Template["source"], string> = { "built-in": "Built in", project: "Saved in this project", user: "Saved on this machine" };
 
 interface WorkerDraft {
   name: string;
@@ -18,9 +18,11 @@ interface WorkerDraft {
 
 const MAX_WORKERS = 11;
 
-/** First run on a repo: name the project and pick the team. Nothing is saved until "Create team". */
+/** First run on a repo: pick what the team is for, then name the project and adjust the team. Nothing is saved until "Create team". */
 export function WelcomeModal() {
   const snap = useOffice((s) => s.snap);
+  const templates = snap?.templates?.length ? snap.templates : BUILT_IN_TEMPLATES;
+  const [template, setTemplate] = useState<Template | null>(null);
   const [projectName, setProjectName] = useState(snap?.config.project.name ?? "");
   const [lead, setLead] = useState<{ name: string; cli: AgentCli }>({ name: LEAD_NAME, cli: "claude" });
   const [workers, setWorkers] = useState<WorkerDraft[]>([{ name: WORKER_NAMES[0], role: "Developer", cli: "claude" }]);
@@ -30,17 +32,35 @@ export function WelcomeModal() {
   const [sending, setSending] = useState(false);
   const [stack, setStack] = useState<StackConfig>(EMPTY_STACK);
   if (!snap) return null;
+  if (!template)
+    return (
+      <PickTemplate
+        templates={templates}
+        repo={snap.config.project.repo || snap.config.project.name}
+        github={snap.config.project.repo.includes("/")}
+        onPick={(t) => {
+          const title = (id: string) => t.roles.find((r) => r.id === id)?.title ?? id;
+          setTemplate(t);
+          setLead({ name: t.team[0]?.name ?? LEAD_NAME, cli: "claude" });
+          setWorkers(t.team.slice(1).map((a) => ({ name: a.name, role: title(a.role), cli: "claude" })));
+        }}
+      />
+    );
+  const coding = template.deliverable === "pull-request";
+  const leadTitle = template.roles.find((r) => r.id === LEAD_ROLE_ID)?.title ?? "Lead";
+  const roleTitles = [...new Set([...template.roles.filter((r) => r.id !== LEAD_ROLE_ID).map((r) => r.title), ...ROLE_LIBRARY.map((c) => c.title)])];
+  const defaultRole = template.roles.find((r) => r.id !== LEAD_ROLE_ID)?.title ?? "Developer";
 
   const setWorker = (i: number, patch: Partial<WorkerDraft>) => setWorkers((ws) => ws.map((w, j) => (j === i ? { ...w, ...patch } : w)));
   const addWorker = () =>
-    setWorkers((ws) => [...ws, { name: nextAgentName([lead.name, ...ws.map((w) => w.name)]), role: "Developer", cli: "claude" }]);
+    setWorkers((ws) => [...ws, { name: nextAgentName([lead.name, ...ws.map((w) => w.name)]), role: defaultRole, cli: "claude" }]);
   const valid = lead.name.trim() && workers.every((w) => w.name.trim());
 
   const submit = () => {
     if (!valid) return;
     setSending(true);
     const hasStack = stack.frameworks.length > 0 || Object.values(stack.tools).some(Boolean);
-    officeActions.completeWelcome({ projectName: projectName.trim(), lead, workers, reviewTool, reviewEnabled, ...(hasStack ? { stack } : {}) });
+    officeActions.completeWelcome({ templateId: template.id, projectName: projectName.trim(), lead, workers, reviewTool, reviewEnabled, ...(hasStack ? { stack } : {}) });
   };
 
   return (
@@ -49,7 +69,10 @@ export function WelcomeModal() {
         <div className="border-b-[3px] border-ink px-4 py-2">
           <h2 className="m-0 text-[22px] font-bold">Welcome to YACC</h2>
           <p className="m-0 text-[14px] text-muted">
-            Set up the team for <b className="text-ink">{snap.config.project.repo || snap.config.project.name}</b>. You can change all of this later in Settings.
+            <b className="text-ink">{template.name}</b> for <b className="text-ink">{snap.config.project.repo || snap.config.project.name}</b>. You can change all of this later in Settings.{" "}
+            <button className="underline" onClick={() => setTemplate(null)}>
+              Choose another
+            </button>
           </p>
         </div>
 
@@ -59,7 +82,7 @@ export function WelcomeModal() {
           </Field>
 
           <section>
-            <h3 className="mb-1 text-[16px] font-bold">Lead</h3>
+            <h3 className="mb-1 text-[16px] font-bold">{leadTitle} (the lead)</h3>
             <p className="mb-2 text-[13px] text-muted">Takes your instructions, plans the work, assigns it, reviews it and reports back to you. Every team has one.</p>
             <div className="grid grid-cols-[40px_1fr_150px] items-end gap-2">
               <Portrait color={agentPalette[0]} lead />
@@ -73,10 +96,10 @@ export function WelcomeModal() {
           </section>
 
           <section>
-            <h3 className="mb-1 text-[16px] font-bold">Workers · {workers.length}</h3>
-            <p className="mb-2 text-[13px] text-muted">Optional. Each worker gets its own desk, copy of the repo and sandbox. With none, the lead hires who it needs, up to your headcount limit.</p>
+            <h3 className="mb-1 text-[16px] font-bold">Team · {workers.length}</h3>
+            <p className="mb-2 text-[13px] text-muted">Optional. Each agent gets its own desk, folder and sandbox. With none, the lead hires who it needs from the role library, up to your headcount limit.</p>
             <datalist id="welcome-roles">
-              {ROLE_SUGGESTIONS.map((r) => (
+              {roleTitles.map((r) => (
                 <option key={r} value={r} />
               ))}
             </datalist>
@@ -104,13 +127,24 @@ export function WelcomeModal() {
               ))}
             </div>
             <button className="btn mt-2 text-[13px]" disabled={workers.length >= MAX_WORKERS} onClick={addWorker}>
-              + Add worker
+              + Add agent
             </button>
           </section>
 
-          <WelcomeStack stack={stack} setStack={setStack} />
-
           <section>
+            <h3 className="mb-1 text-[16px] font-bold">How work moves</h3>
+            <p className="m-0 text-[14px]">
+              {template.stages.map((st) => st.name).join(" → ")}
+              <span className="text-muted"> · one unit of work is a {template.item.toLowerCase()}. Change it in Settings → Workflow.</span>
+            </p>
+            {coding && !snap.config.project.repo.includes("/") && (
+              <p className="mt-1 text-[13px] text-red">This repo has no GitHub remote, so finished work is files and the lead reviews it instead of pull requests.</p>
+            )}
+          </section>
+
+          {coding && <WelcomeStack stack={stack} setStack={setStack} />}
+
+          {coding && <section>
             <h3 className="mb-1 text-[16px] font-bold">Code review</h3>
             <div className="flex flex-wrap items-center gap-3">
               <label className="flex items-center gap-2 text-[14px]">
@@ -125,7 +159,7 @@ export function WelcomeModal() {
                 ))}
               </select>
             </div>
-          </section>
+          </section>}
         </div>
 
         <div className="flex items-center justify-between gap-3 border-t-[3px] border-ink px-4 py-2">
@@ -133,6 +167,37 @@ export function WelcomeModal() {
           <button className="btn" disabled={!valid || sending} onClick={submit}>
             {sending ? "Creating…" : "Create team"}
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Step 1: what the team is for. */
+function PickTemplate({ templates, repo, github, onPick }: { templates: Template[]; repo: string; github: boolean; onPick: (t: Template) => void }) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-[rgba(36,26,46,0.55)] p-4" role="dialog" aria-modal="true" aria-label="Welcome to YACC">
+      <div className="panel flex max-h-[calc(100dvh-2rem)] w-[min(820px,100%)] flex-col">
+        <div className="border-b-[3px] border-ink px-4 py-2">
+          <h2 className="m-0 text-[22px] font-bold">Welcome to YACC</h2>
+          <p className="m-0 text-[14px] text-muted">
+            What is the team for? Pick a starting point for <b className="text-ink">{repo}</b>; you adjust the people next, and everything later in Settings.
+          </p>
+        </div>
+        <div className="scroll-thin grid min-h-0 grid-cols-1 gap-3 overflow-y-auto p-4 sm:grid-cols-2">
+          {templates.map((t) => (
+            <button key={t.id} className="flex flex-col gap-1.5 border-[3px] border-ink bg-white p-3 text-left shadow-[0_3px_0_rgba(36,26,46,0.35)] hover:bg-cream" onClick={() => onPick(t)}>
+              <span className="flex items-baseline gap-2">
+                <b className="text-[17px]">{t.name}</b>
+                {t.source !== "built-in" && <span className="chip text-[10px]">{SOURCE_LABEL[t.source]}</span>}
+              </span>
+              <span className="text-[13px]">{t.description}</span>
+              <span className="text-[12px] text-muted">
+                Starts with {t.team.length === 1 ? "a lead" : `${t.team.length} agents`}: {t.team.map((a) => `${a.name} (${t.roles.find((r) => r.id === a.role)?.title ?? a.role})`).join(", ")}
+              </span>
+              <span className="text-[12px] text-muted">Work: {t.stages.map((s) => s.name).join(" → ")}{t.deliverable === "pull-request" ? (github ? ", pull requests on GitHub" : ", files (no GitHub remote)") : ", files"}</span>
+            </button>
+          ))}
         </div>
       </div>
     </div>

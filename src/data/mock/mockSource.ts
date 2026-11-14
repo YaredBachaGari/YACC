@@ -412,6 +412,10 @@ export function createMockSource(): OfficeDataSource {
         }
     },
 
+    saveTemplate() {
+      world.activity("config", null, "Templates are saved by real HQ, not the demo.");
+    },
+
     updateMemory(patch: Partial<ProjectMemory>) {
       world.snap.memory = { ...(world.snap.memory ?? { brief: "", decisions: "", lessons: "" }), ...patch };
       world.emit({ type: "memory.updated", memory: { ...world.snap.memory } });

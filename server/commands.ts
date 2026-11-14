@@ -1,7 +1,7 @@
 // Browser commands → server actions. Names match OfficeDataSource methods.
 
 import { CEO_ID, LEAD_ROLE_ID, PERMISSIONS, SERVICE_KEYS, type AgentCli, type AgentConfig, type AgentPatch, type NewRoleInput, type OrgPatch, type ProjectMemory, type ReviewTool, type RolePatch, type WelcomeInput, type NewMcpServer, type Board, type NewAgentInput, type ProjectConfig, type RemoveAgentOptions, type RoleConfig, type SandboxSettings, type SetupCheckId, type WorkflowPatch } from "../src/data/types";
-import { DEVELOPER_INSTRUCTIONS, MAX_AGENTS_CEILING, WORKER_BASE_INSTRUCTIONS, defaultRoles, findRole, freeRoleId, leadOf } from "../src/data/roles";
+import { DEVELOPER_INSTRUCTIONS, MAX_AGENTS_CEILING, WORKER_BASE_INSTRUCTIONS, findRole, freeRoleId, leadOf } from "../src/data/roles";
 import { LEAD_NAME, OFFICE_NAME_MAX } from "../src/data/names";
 import { STACK_CATEGORIES, stackSkills, stackTool, type StackChoice, type StackConfig } from "../src/data/stack";
 import { resolveAccess } from "./access";
@@ -16,6 +16,8 @@ import type { Sessions } from "./sessions";
 import { newAgent, removeRoleFile } from "./store";
 import type { Team } from "./team";
 import type { Briefings } from "./briefings";
+import { listTemplates, saveTemplate } from "./templates";
+import { BUILT_IN_TEMPLATES, libraryCard, roleFromCard } from "../src/data/templates";
 import type { Memory } from "./memory";
 import { mergeByNotice } from "./githubSync";
 
@@ -253,6 +255,13 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx
 
     replyBriefing: (id, text) => extra.briefings.reply(str(id, 40), str(text, 2000)),
     markBriefingsRead: () => extra.briefings.markAllRead(),
+    saveTemplate: (name, where, description) => {
+      const dir = saveTemplate(hub.snap.config, extra.memory.read().brief, str(name, 60), where === "user" ? "user" : "project", hub.repo.root, typeof description === "string" ? str(description, 300) : "");
+      hub.snap.templates = listTemplates(hub.repo.root).templates;
+      hub.emit({ type: "snapshot", snapshot: structuredClone(hub.snap) });
+      hub.activity("config", null, `Saved the template "${str(name, 60)}" to ${dir}. ${where === "user" ? "It is offered when you set up any new project on this machine." : "Commit .yacc/templates/ to share it."}`);
+    },
+
     updateMemory: (patch) => {
       const p = (patch ?? {}) as Partial<ProjectMemory>;
       extra.memory.set({
@@ -311,13 +320,17 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx
       const cli = (c: unknown): AgentCli => (c === "codex" ? "codex" : "claude");
       const used = new Set<string>();
       const cfg = hub.snap.config;
-      const roles = defaultRoles();
-      // A worker's job title becomes a role. This welcome sets up a coding team, so they start from the developer's rules.
-      const roleFor = (title: string): RoleConfig => {
-        const clean = str(title, 40).trim() || "Developer";
-        let role = roles.find((r) => r.id !== LEAD_ROLE_ID && r.title.toLowerCase() === clean.toLowerCase());
+      // The template gives the roles, the workflow and the defaults; the welcome screen gives the people.
+      const { templates } = listTemplates(hub.repo.root);
+      const tpl = templates.find((t) => t.id === input.templateId) ?? BUILT_IN_TEMPLATES[0];
+      const roles: RoleConfig[] = structuredClone(tpl.roles);
+      // A worker's role: one the template has, else a card from the role library, else a new role with the general rules.
+      const roleFor = (ref: string): RoleConfig => {
+        const clean = str(ref, 40).trim() || roles.find((r) => r.id !== LEAD_ROLE_ID)?.title || "Developer";
+        let role = roles.find((r) => r.id !== LEAD_ROLE_ID && (r.id === clean.toLowerCase() || r.title.toLowerCase() === clean.toLowerCase()));
         if (!role) {
-          role = { id: freeRoleId({ roles }, clean), title: clean, can: ["work"], instructions: DEVELOPER_INSTRUCTIONS };
+          const fromLibrary = libraryCard(clean);
+          role = fromLibrary && !roles.some((r) => r.id === fromLibrary.id) ? roleFromCard(fromLibrary) : { id: freeRoleId({ roles }, clean), title: clean, can: ["work"], instructions: tpl.deliverable === "pull-request" ? DEVELOPER_INSTRUCTIONS : WORKER_BASE_INSTRUCTIONS };
           roles.push(role);
         }
         return role;
@@ -336,7 +349,14 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx
       if (typeof input.projectName === "string" && input.projectName.trim()) cfg.project.name = str(input.projectName, 80).trim();
       cfg.roles = roles;
       cfg.team = [lead, ...workers];
-      cfg.limits.maxAgents = Math.max(cfg.limits.maxAgents, cfg.team.length);
+      cfg.limits.maxAgents = Math.max(tpl.maxAgents ?? cfg.limits.maxAgents, cfg.team.length);
+      if (tpl.autonomy) cfg.autonomy = { ...tpl.autonomy };
+      if (tpl.officeName && !cfg.project.officeName) cfg.project.officeName = tpl.officeName;
+      cfg.workflow.item = tpl.item;
+      cfg.workflow.stages = structuredClone(tpl.stages);
+      // Pull requests need GitHub; without a remote the work is files (normalizeConfig turns a PR gate into a review).
+      cfg.workflow.deliverable = tpl.deliverable === "pull-request" && hub.repo.github ? "pull-request" : "files";
+      if (tpl.brief && !extra.memory.read().brief.trim()) extra.memory.set({ brief: tpl.brief.trim() + "\n" });
       const tools: ReviewTool[] = ["coderabbit", "greptile", "copilot", "human", "custom"];
       if (tools.includes(input.reviewTool as ReviewTool)) cfg.workflow.review.tool = input.reviewTool as ReviewTool;
       if (typeof input.reviewEnabled === "boolean") cfg.workflow.review.enabled = input.reviewEnabled;
@@ -353,7 +373,7 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx
       await sessions.recheckSetup();
       await sbx.refresh();
       hub.emit({ type: "snapshot", snapshot: structuredClone(hub.snap) });
-      hub.activity("config", null, `Welcome! Team created: ${cfg.team.map((a) => a.name).join(", ")}. Press Start team when you're ready.`);
+      hub.activity("config", null, `Welcome! ${tpl.name} created: ${cfg.team.map((a) => a.name).join(", ")}. Press Start team when you're ready.`);
     },
 
     updateWorkflow: (patch) => {

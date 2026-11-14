@@ -26,6 +26,8 @@ jobs:
       - run: pnpm build
       - name: Windows PATH refresh
         run: npx tsx scripts/path-test.ts
+      - name: Templates and the role library
+        run: npx tsx scripts/templates-test.ts
       - name: Shared files, memory, briefings, autonomy
         run: npx tsx scripts/teamwork-test.ts
       - name: Workflow stages and gates

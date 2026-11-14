@@ -186,7 +186,7 @@ const studio = (): HqConfig => parseConfig(STUDIO, (rel) => studioFiles[rel] ?? 
   ok("role file: the lead reports to the CEO by name", lead.includes("You report to Abuti, the CEO (the human)."));
   ok("role file: org chart with reporting lines", lead.includes("- Abuti — CEO (the human)") && lead.includes("- Ada — Writer; reports to Leo"));
   ok("role file: the hirer sees the headcount limit", lead.includes("Headcount limit set by the CEO: 5 agents (the team has 4)."));
-  ok("role file: tools match the role", lead.includes("Your tools: create_board, create_task, update_task, report_to_ceo, update_brief, assign_task, approve_work, request_changes, hire_agent, dismiss_agent, list_workers"));
+  ok("role file: tools match the role", lead.includes("Your tools: create_board, create_task, update_task, report_to_ceo, update_brief, assign_task, approve_work, request_changes, list_roles, hire_agent, dismiss_agent, list_workers"));
   const writer = roleMd(c.team[2], c);
   ok("role file: a writer gets writer rules, not coding rules", writer.includes("Write the script from the research.") && !/\bPR\b|gh pr|branch/.test(writer), writer);
   ok("role file: anyone can go to the CEO directly", writer.includes("You don't need to go through the lead for this."));
@@ -227,7 +227,7 @@ const studio = (): HqConfig => parseConfig(STUDIO, (rel) => studioFiles[rel] ?? 
   throws("hire: a worker can't hire", () => team.hire("ada", { role: "writer", reason: "more scripts" }), /can't hire/);
   throws("hire: a reason is required", () => team.hire("maya", { role: "writer", reason: " " }), /why this hire is needed/);
   throws("hire: no second lead", () => team.hire("maya", { role: "Producer", reason: "help" }), /one lead/);
-  throws("hire: a new role needs instructions", () => team.hire("maya", { role: "Fact checker", reason: "accuracy" }), /no "Fact checker" role yet .* pass instructions/);
+  throws("hire: a new role needs instructions", () => team.hire("maya", { role: "Voice actor", reason: "narration" }), /no "Voice actor" role yet .* pass instructions/);
 
   const msg = team.hire("maya", { role: "Fact checker", name: "Kit", reason: "The script cites figures nobody on the team checks.", temporary: true, instructions: "Check every figure and name in the script against its source. Report each mismatch with the source link." });
   const kit = hub.cfg("kit")!;

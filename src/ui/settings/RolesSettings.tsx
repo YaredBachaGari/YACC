@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { toolsFor } from "../../data/roles";
+import { ROLE_LIBRARY } from "../../data/templates";
 import { LEAD_ROLE_ID, PERMISSIONS, PERMISSION_LABEL, type Permission, type RoleConfig } from "../../data/types";
 import { officeActions, useOffice } from "../../store/office";
 import { Field, SectionTitle } from "../kit";
@@ -93,6 +94,8 @@ function RoleRow({ role, holders, expanded, onToggle }: { role: RoleConfig; hold
 }
 
 function AddRole() {
+  const roles = useOffice((s) => s.snap?.config.roles) ?? [];
+  const cards = ROLE_LIBRARY.filter((c) => !roles.some((r) => r.id === c.id || r.title.toLowerCase() === c.title.toLowerCase()));
   const [title, setTitle] = useState("");
   const add = () => {
     if (!title.trim()) return;
@@ -117,6 +120,19 @@ function AddRole() {
         </button>
       </form>
       <p className="mt-2 text-[12px] text-muted">A new role starts able to take tasks, with general instructions. Open it to say what the role does.</p>
+      {cards.length > 0 && (
+        <>
+          <h4 className="mb-1 mt-3 text-[14px] font-bold">From the role library</h4>
+          <p className="mb-2 text-[12px] text-muted">Ready-made roles with their instructions. The lead can also hire into these without you adding them first.</p>
+          <div className="flex flex-wrap gap-1.5">
+            {cards.map((c) => (
+              <button key={c.id} className="btn px-2 py-0.5 text-[12px]" title={c.summary} onClick={() => officeActions.addRole({ title: c.title, can: c.can, instructions: c.instructions })}>
+                + {c.title}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </section>
   );
 }

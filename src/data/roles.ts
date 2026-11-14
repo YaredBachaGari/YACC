@@ -101,7 +101,7 @@ export const PERMISSION_TOOLS: Record<Permission, readonly string[]> = {
   work: ["get_my_task", "set_my_status", "complete_stage"],
   review: ["approve_work", "request_changes"],
   approve: ["approve_work", "request_changes"],
-  hire: ["hire_agent", "dismiss_agent"],
+  hire: ["list_roles", "hire_agent", "dismiss_agent"],
 };
 
 /** The Team MCP tools a role gets, in a stable order. */

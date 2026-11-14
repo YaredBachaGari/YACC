@@ -97,7 +97,7 @@ export function BoardsDrawer({ initialBoardId }: { initialBoardId?: string }) {
             </div>
           );
         })}
-        {tasks.length === 0 && <p className="col-span-full p-6 text-center text-muted">No tasks on this board yet. The lead adds tasks when a board is active.</p>}
+        {tasks.length === 0 && <p className="col-span-full p-6 text-center text-muted">No {wf.item.toLowerCase()}s on this board yet. The lead adds them when a board is active.</p>}
       </div>
     </>
   );
