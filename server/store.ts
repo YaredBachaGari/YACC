@@ -12,6 +12,8 @@ import { z } from "zod";
 import { CEO_ID, LEAD_ROLE_ID, PERMISSIONS, type AgentConfig, type Board, type HqConfig, type RoleConfig, type SandboxSettings, type Task } from "../src/data/types";
 import { LEAD_NAME, WORKER_NAMES } from "../src/data/names";
 import { DEFAULT_CEO_NAME, DEFAULT_MAX_AGENTS, DEVELOPER_INSTRUCTIONS, defaultRoles, freeRoleId, normalizeConfig, roleSlug } from "../src/data/roles";
+import { codingStages, defaultWorkflowParts } from "../src/data/workflow";
+import { GATES } from "../src/data/types";
 import { slugify } from "./paths";
 import type { RepoInfo } from "./repo";
 
@@ -76,6 +78,8 @@ function defaultConfig(repo: RepoInfo, port: number): HqConfig {
     roles: defaultRoles(),
     team: [lead, newAgent(slugify(WORKER_NAMES[0]), WORKER_NAMES[0], "developer", "#29adff", lead.id)],
     workflow: {
+      // With a GitHub remote: the coding flow (pull requests). Without: work is files, the lead reviews it.
+      ...defaultWorkflowParts(!!repo.github),
       review: { enabled: true, tool: repo.hasCodeRabbit ? "coderabbit" : "human", command: "" },
       merge: { by: "human" },
       deploy: { enabled: repo.hasInsta, tool: "instacloud", command: "", perAgentEnvironments: repo.hasInsta },
@@ -137,6 +141,20 @@ const fileSchema = z.object({
   roles: z.record(z.string(), roleSchema).default({}),
   team: z.array(agentSchema).min(1, "The team needs at least one agent (the lead)."),
   workflow: z.object({
+    item: z.string().default("Task"),
+    // Configs from before stages were coding teams: keep them on pull requests.
+    deliverable: z.enum(["pull-request", "files"]).default("pull-request"),
+    stages: z
+      .array(
+        z.object({
+          id: z.string().optional(),
+          name: z.string().min(1),
+          owner: z.string().default("any"),
+          gate: z.enum(GATES).default("none"),
+          reviewer: z.string().optional(),
+        }),
+      )
+      .default(codingStages()),
     review: z.object({ enabled: z.boolean(), tool: z.enum(["coderabbit", "greptile", "copilot", "human", "custom"]), command: z.string().default("") }),
     merge: z.object({ by: z.enum(["human", "lead"]) }),
     deploy: z.object({ enabled: z.boolean(), tool: z.enum(["instacloud", "vercel", "custom"]), command: z.string().default(""), perAgentEnvironments: z.boolean().default(false) }),
@@ -247,7 +265,7 @@ export function parseConfig(text: string, readFile: (relPath: string) => string 
       ...(a.hiredBy ? { hiredBy: a.hiredBy } : {}),
       ...(a.temporary ? { temporary: true } : {}),
     })),
-    workflow: f.workflow,
+    workflow: { ...f.workflow, stages: f.workflow.stages.map((st) => ({ ...st, id: st.id ?? roleSlug(st.name) })) },
     ...(f.stack ? { stack: f.stack as HqConfig["stack"] } : {}),
   };
   // An agent whose role isn't defined is a typo worth stopping for, not something to guess at.

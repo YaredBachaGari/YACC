@@ -73,7 +73,8 @@ export class GitHubSync {
 
   /** One poll, then schedule the next at the current interval. */
   private async tick() {
-    await this.refresh();
+    // Teams whose work is files, not pull requests, never touch GitHub. Checked each round, so a change in Settings applies at once.
+    if (this.hub.snap.config.workflow.deliverable === "pull-request") await this.refresh();
     if (this.timer) clearTimeout(this.timer);
     this.timer = setTimeout(() => void this.tick(), Math.max(this.interval, this.pausedUntil - Date.now()));
   }

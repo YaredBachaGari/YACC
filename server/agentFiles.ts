@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { stackRoleMd } from "../src/data/stack";
 import { CEO_ID, type AgentConfig, type HqConfig } from "../src/data/types";
 import { can, managerName, roleOf, toolsFor } from "../src/data/roles";
+import { describeFlow } from "../src/data/workflow";
 
 /** Team MCP config, passed with `claude --mcp-config` (so the project's own .mcp.json is untouched). */
 export const MCP_CONFIG = ".claude/hq-mcp.json";
@@ -130,8 +131,10 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
   if (can(cfg, agent, "work") && !/get_my_task/.test(role?.instructions ?? ""))
     rules.push(
       "When HQ tells you to start a task, call get_my_task first. Work only on that task.",
-      "Report with set_my_status: in-review when your output is ready to be checked, blocked (with the reason) when you can't continue, done when it is finished. The lead is told automatically.",
+      "When your part of the stage is finished, call complete_stage with a note saying what you did and where the output is. If you can't continue, call set_my_status blocked with the reason. The lead is told automatically.",
     );
+  if (can(cfg, agent, "review") || can(cfg, agent, "approve"))
+    rules.push("When HQ asks you to review or sign off a stage, check the work against its done-when, then call approve_work, or request_changes with specific fixes. Never approve work you haven't checked.");
   rules.push(
     "You can message any teammate with send_message, whatever the reporting lines.",
     "When you need the CEO to approve or decide something, or to do something outside your sandbox (create an account, database or API key, change a setting in a dashboard, put a value in your env file), call ask_user with a short title and clear steps, then keep working on what you can. You don't need to go through the lead for this. Never put secret values in it; name the variable instead. Variables reach you through HQ: ask the user to add NAME to your App variables in HQ (Settings → Sandbox → App variables) and restart you; there is no env file inside your sandbox to edit.",
@@ -151,6 +154,10 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
     ...(agent.roleMd.trim() ? ["## Notes for you", agent.roleMd.trim(), ""] : []),
     "## Team",
     team,
+    "",
+    `## How work moves`,
+    `Each ${cfg.workflow.item.toLowerCase()} goes through these stages in order. HQ hands it to the next person when a stage is finished.`,
+    describeFlow(cfg),
     "",
     ...limits,
     "## How HQ works",

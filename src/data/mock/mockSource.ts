@@ -429,6 +429,9 @@ export function createMockSource(): OfficeDataSource {
 
     updateWorkflow(patch: WorkflowPatch) {
       const wf = world.snap.config.workflow;
+      if (patch.item?.trim()) wf.item = patch.item.trim();
+      if (patch.deliverable) wf.deliverable = patch.deliverable;
+      if (patch.stages?.length) wf.stages = patch.stages;
       Object.assign(wf.review, patch.review);
       Object.assign(wf.merge, patch.merge);
       Object.assign(wf.deploy, patch.deploy);

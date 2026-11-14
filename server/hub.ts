@@ -5,6 +5,7 @@ import type { OfficeEvent } from "../src/data/source";
 import type { ActivityType, AgentConfig, AgentStatus, HqConfig, OfficeSnapshot, SessionInfo, SetupState } from "../src/data/types";
 import { writePlanExport } from "./planExport";
 import { normalizeConfig } from "../src/data/roles";
+import { placeTasks } from "../src/data/workflow";
 import { saveConfig, savePlan, type PlanFile } from "./store";
 import type { RepoInfo } from "./repo";
 
@@ -30,6 +31,17 @@ export class Hub {
       messages: [],
       activity: [],
     };
+    // Plans from before stages: every task starts in the first stage.
+    placeTasks(config.workflow, this.snap.tasks);
+  }
+
+  /** After the stages change: tasks in a stage that no longer exists go to the first one. */
+  private replaceTasks() {
+    const moved = placeTasks(this.snap.config.workflow, this.snap.tasks);
+    if (!moved.length) return;
+    for (const t of this.snap.tasks) if (moved.includes(t.id)) this.emit({ type: "task.updated", task: { ...t } });
+    this.planChanged();
+    this.activity("config", null, `${moved.join(", ")} ${moved.length > 1 ? "were in stages" : "was in a stage"} that no longer exist${moved.length > 1 ? "" : "s"}; moved to ${this.snap.config.workflow.stages[0].name}.`);
   }
 
   static freshStatus(agentId: string): AgentStatus {
@@ -128,6 +140,7 @@ export class Hub {
     normalizeConfig(this.snap.config);
     saveConfig(this.repo.root, this.snap.config);
     this.emit({ type: "config.updated", config: structuredClone(this.snap.config) });
+    this.replaceTasks();
   }
 
   /**
@@ -152,6 +165,7 @@ export class Hub {
         if (t.status === "in-progress") t.status = "todo";
       }
     if (removed.length) this.planChanged();
+    placeTasks(next.workflow, this.snap.tasks);
     this.emit({ type: "snapshot", snapshot: structuredClone(this.snap) });
     return null;
   }

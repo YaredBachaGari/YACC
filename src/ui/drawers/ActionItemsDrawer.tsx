@@ -136,21 +136,43 @@ function Item({ item, from, now }: { item: ActionItem; from?: { id: string; name
           {expanded ? "Show less" : "Show all"}
         </button>
       )}
-      <div className="mt-2 flex items-center gap-2">
-        <input
-          className="field min-w-0 flex-1 text-[13px]"
-          value={note}
-          placeholder="Note for the agent (optional, no secrets)"
-          onChange={(e) => setNote(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && officeActions.resolveActionItem(item.id, "done", note)}
-        />
-        <button className="btn px-2 text-[12px]" onClick={() => officeActions.resolveActionItem(item.id, "done", note)}>
-          Done
-        </button>
-        <button className="btn px-2 text-[12px]" onClick={() => officeActions.resolveActionItem(item.id, "dismissed", note)}>
-          Dismiss
-        </button>
-      </div>
+      {item.kind === "approval" ? (
+        <div className="mt-2 flex items-center gap-2">
+          <input
+            className="field min-w-0 flex-1 text-[13px]"
+            value={note}
+            placeholder="Feedback (needed to send it back)"
+            onChange={(e) => setNote(e.target.value)}
+          />
+          <button className="btn px-2 text-[12px]" onClick={() => officeActions.resolveActionItem(item.id, "done", note)}>
+            Approve
+          </button>
+          <button
+            className="btn px-2 text-[12px]"
+            disabled={!note.trim()}
+            title={note.trim() ? undefined : "Write what needs to change first"}
+            onClick={() => officeActions.resolveActionItem(item.id, "dismissed", note)}
+          >
+            Send back
+          </button>
+        </div>
+      ) : (
+        <div className="mt-2 flex items-center gap-2">
+          <input
+            className="field min-w-0 flex-1 text-[13px]"
+            value={note}
+            placeholder="Note for the agent (optional, no secrets)"
+            onChange={(e) => setNote(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && officeActions.resolveActionItem(item.id, "done", note)}
+          />
+          <button className="btn px-2 text-[12px]" onClick={() => officeActions.resolveActionItem(item.id, "done", note)}>
+            Done
+          </button>
+          <button className="btn px-2 text-[12px]" onClick={() => officeActions.resolveActionItem(item.id, "dismissed", note)}>
+            Dismiss
+          </button>
+        </div>
+      )}
     </li>
   );
 }

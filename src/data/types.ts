@@ -126,7 +126,46 @@ export interface NewMcpServer {
 export type ReviewTool = "coderabbit" | "greptile" | "copilot" | "human" | "custom";
 export type DeployTool = "instacloud" | "vercel" | "custom";
 
+/**
+ * What must happen before work leaves a stage.
+ * none: it moves on as soon as the owner finishes. review / approval: an agent whose role has the
+ * `review` / `approve` permission checks it. ceo: you approve it (an action item). pull-request:
+ * the owner opens a PR; review and merge on GitHub finish it (last stage only).
+ */
+export const GATES = ["none", "review", "approval", "ceo", "pull-request"] as const;
+export type GateKind = (typeof GATES)[number];
+
+export const GATE_LABEL: Record<GateKind, string> = {
+  none: "Nothing: moves on",
+  review: "Teammate review",
+  approval: "Teammate sign-off",
+  ceo: "Your approval",
+  "pull-request": "Pull request (GitHub)",
+};
+
+/** One step work goes through. */
+export interface StageConfig {
+  id: string; // "script"
+  name: string; // "Script"
+  /** Role id that does this stage, or "any" (any role that takes tasks). */
+  owner: string;
+  gate: GateKind;
+  /** review / approval gates: the role that checks it. Left out: any role with the permission. */
+  reviewer?: string;
+}
+
+/** Where finished work goes. pull-request: a branch and PR on GitHub. files: files in the agent's folder. */
+export type DeliverableKind = "pull-request" | "files";
+
+/** Stage id for agents and stages: "any" role that takes tasks. */
+export const ANY_ROLE = "any";
+
 export interface WorkflowConfig {
+  /** What one piece of work is called in the app: Task, Piece, Experiment. */
+  item: string;
+  deliverable: DeliverableKind;
+  /** In order. Every new item starts in the first. */
+  stages: StageConfig[];
   review: { enabled: boolean; tool: ReviewTool; command: string };
   merge: { by: "human" | "lead" };
   deploy: { enabled: boolean; tool: DeployTool; command: string; perAgentEnvironments: boolean };
@@ -208,6 +247,10 @@ export interface Task {
   status: TaskStatus;
   needs: string[]; // task IDs
   prNumber: number | null;
+  /** Workflow stage id. Missing on plans from before stages: the first stage. */
+  stage?: string;
+  /** Who must approve or send it back: an agent id, or "ceo". Set while it waits at a gate. */
+  reviewerId?: string | null;
   description?: string; // what to build
   files?: string[]; // the only files this task may edit
   doneWhen?: string; // acceptance criteria
@@ -401,6 +444,8 @@ export interface OfficeSnapshot {
 /** Something an agent needs the user to do outside its sandbox (Team MCP `ask_user`). */
 export interface ActionItem {
   id: string;
+  /** "request": an agent asked you for something (ask_user). "approval": work waits for your sign-off at a stage gate. */
+  kind?: "request" | "approval";
   fromId: string; // agent id
   taskId: string | null;
   title: string;
@@ -452,6 +497,9 @@ export interface OrgPatch {
 }
 
 export interface WorkflowPatch {
+  item?: string;
+  deliverable?: DeliverableKind;
+  stages?: StageConfig[];
   review?: Partial<WorkflowConfig["review"]>;
   merge?: Partial<WorkflowConfig["merge"]>;
   deploy?: Partial<WorkflowConfig["deploy"]>;

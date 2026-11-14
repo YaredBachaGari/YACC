@@ -196,8 +196,8 @@ async function checkOpenAiSecret(sbxOk: boolean): Promise<Check> {
   return { ...base, status: "missing", detail: "Codex agents can't sign in until this is set. Opens your browser to sign in with ChatGPT.", fix: fix("sbx secret set openai --oauth", true, "https://docs.docker.com/ai/sandboxes/") };
 }
 
-/** `team` adds the Codex checks only when the team has Codex agents. */
-export async function runSetupChecks(repo: RepoInfo, team: AgentConfig[] = []): Promise<SetupState> {
+/** `team` adds the Codex checks only when the team has Codex agents; `github` false leaves out GitHub (work is files, not pull requests). */
+export async function runSetupChecks(repo: RepoInfo, team: AgentConfig[] = [], github = true): Promise<SetupState> {
   // So "Check again" sees a tool that was installed while HQ was running (Windows keeps the old PATH otherwise).
   await refreshWindowsPath();
   const brew = os === "darwin" && (await has("brew"));
@@ -205,7 +205,7 @@ export async function runSetupChecks(repo: RepoInfo, team: AgentConfig[] = []): 
   const sbxOk = sbx.status === "ok";
   const [login, secret] = await Promise.all([checkSbxLogin(sbxOk), checkGithubSecret(sbxOk, gh.status === "ok")]);
   const policy = await checkSbxPolicy(login.status === "ok");
-  const checks: SetupCheck[] = [osCheck, sbx, login, policy, secret, tmux, claude, gh, checkRemote(repo)];
+  const checks: SetupCheck[] = github ? [osCheck, sbx, login, policy, secret, tmux, claude, gh, checkRemote(repo)] : [osCheck, sbx, login, policy, tmux, claude];
   const codexAgents = team.filter((a) => a.cli === "codex");
   if (codexAgents.some((a) => a.mode === "sandbox")) checks.splice(5, 0, await checkOpenAiSecret(sbxOk));
   if (codexAgents.some((a) => a.mode === "local")) checks.push(await checkCodex());
