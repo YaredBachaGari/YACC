@@ -1,7 +1,8 @@
 // Boards, tasks, assignments and messages. Used by both the Team MCP tools
 // (agents) and the browser commands (you), so both follow the same rules.
 
-import type { Board, Task, TaskStatus } from "../src/data/types";
+import { ANY_ROLE, CEO_ID, type AgentConfig, type Board, type StageConfig, type Task, type TaskStatus } from "../src/data/types";
+import { nextStageOf, stageOf } from "../src/data/workflow";
 import type { Hub } from "./hub";
 import type { ActionItems } from "./actionItems";
 import type { Inbox } from "./inbox";
@@ -14,9 +15,11 @@ export interface NewTask {
   files?: string[];
   doneWhen?: string;
   needs?: string[];
+  /** Stage id to start in. Left out: the first stage. */
+  stage?: string;
 }
 
-export type TaskPatch = Partial<Pick<Task, "title" | "description" | "files" | "doneWhen" | "needs" | "status" | "boardId" | "note" | "prNumber">>;
+export type TaskPatch = Partial<Pick<Task, "title" | "description" | "files" | "doneWhen" | "needs" | "status" | "boardId" | "note" | "prNumber" | "stage">>;
 
 const now = () => new Date().toISOString();
 
@@ -84,6 +87,7 @@ export class Planner {
     const task: Task = {
       id, boardId: board.id, title: input.title.trim().slice(0, 120), ownerId: null, status: "todo",
       needs: input.needs ?? [], prNumber: null, description: input.description ?? "", files: input.files ?? [], doneWhen: input.doneWhen ?? "", note: null,
+      stage: this.stageFor(input.stage).id, reviewerId: null,
     };
     this.snap.tasks.push(task);
     this.hub.emit({ type: "task.updated", task: { ...task } });
@@ -95,7 +99,9 @@ export class Planner {
   updateTask(id: string, patch: TaskPatch): Task {
     const task = this.task(id);
     if (!task) throw new Error(`No task ${id}`);
+    if (patch.stage !== undefined) patch = { ...patch, stage: this.stageFor(patch.stage).id };
     Object.assign(task, Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)));
+    if (task.status !== "in-review") task.reviewerId = null;
     if (task.status === "done") {
       for (const a of this.snap.agents) if (a.currentTaskId === task.id) this.hub.setStatus(a.agentId, { currentTaskId: null });
     }
@@ -128,8 +134,12 @@ export class Planner {
   setStatus(agentId: string, status: Extract<TaskStatus, "in-progress" | "blocked" | "in-review" | "done">, note?: string, prNumber?: number): Task {
     const task = this.currentTask(agentId);
     if (!task) throw new Error("You have no task. Ask the lead for one.");
+    // Outside a pull-request stage, "ready for review" and "done" both mean: my part of this stage is finished.
+    if ((status === "in-review" || status === "done") && stageOf(this.wf, task).gate !== "pull-request") return this.completeStage(agentId, note);
+    // Starting work keeps the note it arrived with (the last stage's handoff, or a reviewer's changes); a blocked reason is cleared.
+    const keepNote = status === "in-progress" && !note && task.status !== "blocked";
     task.status = status;
-    task.note = note?.slice(0, 300) || null;
+    if (!keepNote) task.note = note?.slice(0, 300) || null;
     if (prNumber) task.prNumber = prNumber;
     if (status === "done") this.hub.setStatus(agentId, { currentTaskId: null });
     else this.hub.setStatus(agentId, { currentTaskId: task.id });
@@ -149,8 +159,164 @@ export class Planner {
     const st = this.hub.status(agentId);
     const byCurrent = st?.currentTaskId ? this.task(st.currentTaskId) : undefined;
     if (byCurrent && byCurrent.ownerId === agentId) return byCurrent;
-    const mine = this.snap.tasks.filter((t) => t.ownerId === agentId && t.status !== "done");
+    // Work waiting for someone else's review is not the owner's to continue until it comes back.
+    const mine = this.snap.tasks.filter((t) => t.ownerId === agentId && t.status !== "done" && !t.reviewerId);
     return mine.find((t) => t.status === "in-progress") ?? mine.find((t) => t.status === "todo") ?? mine[0];
+  }
+
+  // ------------------------------------------------------------ workflow: stages and gates
+
+  private get wf() {
+    return this.snap.config.workflow;
+  }
+
+  private stageFor(ref?: string): StageConfig {
+    if (!ref?.trim()) return this.wf.stages[0];
+    const r = ref.trim().toLowerCase();
+    const stage = this.wf.stages.find((s) => s.id === r || s.name.toLowerCase() === r);
+    if (!stage) throw new Error(`No stage "${ref}". Stages: ${this.wf.stages.map((s) => s.id).join(", ")}`);
+    return stage;
+  }
+
+  /** Who should do a stage: someone with the stage's role, preferring whoever did the last one, then running and free agents. */
+  private pickOwner(stage: StageConfig, previous: string | null): AgentConfig | null {
+    const cfg = this.snap.config;
+    const fits = cfg.team.filter((a) => can(cfg, a, "work") && (stage.owner === ANY_ROLE || a.roleId === stage.owner));
+    if (!fits.length) return null;
+    const rank = (a: AgentConfig) => {
+      const running = this.hub.status(a.id)?.session.state === "running";
+      const free = !this.currentTask(a.id);
+      return (a.id === previous ? 8 : 0) + (running ? 4 : 0) + (free ? 2 : 0);
+    };
+    return [...fits].sort((x, y) => rank(y) - rank(x))[0];
+  }
+
+  /** Who checks a stage at a review or approval gate: never the person who did it. */
+  private pickReviewer(stage: StageConfig, ownerId: string | null): AgentConfig | null {
+    const cfg = this.snap.config;
+    const permission = stage.gate === "approval" ? "approve" : "review";
+    const fits = cfg.team.filter((a) => a.id !== ownerId && can(cfg, a, permission) && (!stage.reviewer || a.roleId === stage.reviewer));
+    const running = fits.filter((a) => this.hub.status(a.id)?.session.state === "running");
+    return running[0] ?? fits[0] ?? null;
+  }
+
+  private changed(task: Task) {
+    this.hub.emit({ type: "task.updated", task: { ...task } });
+    this.hub.planChanged();
+  }
+
+  /**
+   * The owner says their part of the current stage is finished. Depending on the stage's gate the
+   * work moves on, or waits for a reviewer, a sign-off or the CEO.
+   */
+  completeStage(agentId: string, note?: string): Task {
+    const task = this.currentTask(agentId);
+    if (!task) throw new Error("You have no task. Ask the lead for one.");
+    const stage = stageOf(this.wf, task);
+    const clean = note?.trim().slice(0, 600) || null;
+    if (stage.gate === "pull-request")
+      throw new Error(`${stage.name} ends with a pull request. Open it, then call set_my_status with in-review and the PR number.`);
+    task.note = clean;
+    const who = this.hub.name(agentId);
+    if (stage.gate === "none") return this.advance(task, agentId, `${who} finished ${stage.name} on ${task.id}${clean ? `: ${clean}` : ""}`);
+
+    // The owner is free for other work while this waits.
+    this.hub.setStatus(agentId, { currentTaskId: null });
+    task.status = "in-review";
+    const reviewer = stage.gate === "ceo" ? null : this.pickReviewer(stage, agentId);
+    if (stage.gate === "ceo" || !reviewer) {
+      // No teammate can check it: it comes to you.
+      task.reviewerId = CEO_ID;
+      this.changed(task);
+      const why = stage.gate === "ceo" ? "" : ` (nobody on the team can ${stage.gate === "review" ? "review" : "sign off"} it)`;
+      this.actions?.addApproval(agentId, task.id, `Approve ${task.id}: ${task.title}`, [`${stage.name} is done${why}.`, clean ? `${who}: ${clean}` : "", task.doneWhen ? `Done when: ${task.doneWhen}` : ""].filter(Boolean).join("\n\n"));
+      this.hub.activity("agent.needs-input", agentId, `${task.id} waits for your approval after ${stage.name}`);
+      return task;
+    }
+    task.reviewerId = reviewer.id;
+    this.changed(task);
+    const verb = stage.gate === "review" ? "review" : "sign off";
+    this.hub.activity("task.started", agentId, `${who} sent ${task.id} to ${reviewer.name} to ${verb} (${stage.name})`);
+    this.notify(
+      reviewer.id,
+      `Please ${verb} ${task.id} (${task.title}), stage ${stage.name}. ${who} says: ${clean ?? "(no note)"}${task.doneWhen ? ` Done when: ${task.doneWhen}.` : ""} Check it, then call approve_work, or request_changes with what to fix.`,
+    );
+    return task;
+  }
+
+  /** A reviewer (or the CEO, as "you") passes the work: it moves to the next stage. */
+  approveWork(byId: string, taskId: string, note?: string): Task {
+    const task = this.task(taskId);
+    if (!task) throw new Error(`No task ${taskId}`);
+    const me = byId === "you" ? CEO_ID : byId;
+    if (task.status !== "in-review" || !task.reviewerId) throw new Error(`${task.id} isn't waiting for a review.`);
+    if (task.reviewerId !== me) throw new Error(`${task.id} is waiting for ${task.reviewerId === CEO_ID ? "the CEO" : this.hub.name(task.reviewerId)}, not you.`);
+    const stage = stageOf(this.wf, task);
+    const by = me === CEO_ID ? this.snap.config.ceo.name : this.hub.name(byId);
+    const clean = note?.trim().slice(0, 600);
+    if (task.ownerId) this.notify(task.ownerId, `${by} approved ${task.id} (${stage.name})${clean ? `: ${clean}` : "."}`);
+    return this.advance(task, me === CEO_ID ? null : byId, `${by} approved ${stage.name} on ${task.id}${clean ? `: ${clean}` : ""}`);
+  }
+
+  /** A reviewer (or the CEO) sends the work back to whoever did the stage. */
+  requestChanges(byId: string, taskId: string, feedback: string): Task {
+    const task = this.task(taskId);
+    if (!task) throw new Error(`No task ${taskId}`);
+    const me = byId === "you" ? CEO_ID : byId;
+    if (task.status !== "in-review" || !task.reviewerId) throw new Error(`${task.id} isn't waiting for a review.`);
+    if (task.reviewerId !== me) throw new Error(`${task.id} is waiting for ${task.reviewerId === CEO_ID ? "the CEO" : this.hub.name(task.reviewerId)}, not you.`);
+    const what = feedback?.trim().slice(0, 1500);
+    if (!what) throw new Error("Say what needs to change.");
+    const stage = stageOf(this.wf, task);
+    const by = me === CEO_ID ? this.snap.config.ceo.name : this.hub.name(byId);
+    task.reviewerId = null;
+    task.note = `Changes requested by ${by}: ${what}`.slice(0, 600);
+    task.status = task.ownerId ? "in-progress" : "todo";
+    this.changed(task);
+    this.hub.activity("task.started", me === CEO_ID ? null : byId, `${by} sent ${task.id} back (${stage.name}): ${what.slice(0, 120)}`);
+    if (task.ownerId) {
+      if (!this.currentTask(task.ownerId)) this.hub.setStatus(task.ownerId, { currentTaskId: task.id });
+      this.notify(task.ownerId, `${by} sent ${task.id} (${task.title}) back with changes for ${stage.name}: ${what} Fix it, then call complete_stage again.`);
+    }
+    return task;
+  }
+
+  /** Moves work to the next stage and hands it to someone who does that stage; or finishes it. */
+  private advance(task: Task, byId: string | null, summary: string): Task {
+    const from = stageOf(this.wf, task);
+    const next = nextStageOf(this.wf, task);
+    const previous = task.ownerId;
+    const lead = leadOf(this.snap.config);
+    task.reviewerId = null;
+    if (previous && this.hub.status(previous)?.currentTaskId === task.id) this.hub.setStatus(previous, { currentTaskId: null });
+    if (!next) {
+      task.status = "done";
+      this.changed(task);
+      this.hub.activity("task.started", byId, `${summary}. ${task.id} is done.`);
+      if (lead && lead.id !== byId) this.notify(lead.id, `${task.id} (${task.title}) is done: ${from.name} was the last stage.${task.note ? ` Last note: ${task.note}` : ""}`);
+      return task;
+    }
+    task.stage = next.id;
+    task.status = "todo";
+    const owner = this.pickOwner(next, previous);
+    task.ownerId = owner?.id ?? null;
+    this.changed(task);
+    if (!owner) {
+      const role = this.snap.config.roles.find((r) => r.id === next.owner)?.title ?? next.owner;
+      this.hub.activity("agent.needs-input", byId, `${summary}. ${task.id} moved to ${next.name}, but nobody on the team is a ${role}.`);
+      if (lead) this.notify(lead.id, `${task.id} (${task.title}) moved to ${next.name}, but nobody on the team has the ${role} role. Assign it to someone, or hire a ${role}.`);
+      return task;
+    }
+    this.hub.activity("task.assigned", byId, `${summary}. ${task.id} moved to ${next.name}: ${owner.name}`);
+    if (!this.currentTask(owner.id) || this.currentTask(owner.id)?.id === task.id) this.hub.setStatus(owner.id, { currentTaskId: task.id });
+    const busy = this.currentTask(owner.id)?.id !== task.id;
+    const handoff = task.note ? ` From the last stage: ${task.note}` : "";
+    this.inbox.push(owner.id, {
+      fromId: "hq",
+      kind: "assign",
+      text: `${task.id} (${task.title}) is yours for the ${next.name} stage.${handoff} ${busy ? "Start it when your current task is done." : "Start now."} Call the hq get_my_task tool for the details.`,
+    });
+    return task;
   }
 
   // ------------------------------------------------------------ messages

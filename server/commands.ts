@@ -346,10 +346,22 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx
       const p = (patch ?? {}) as WorkflowPatch;
       const wf = hub.snap.config.workflow;
       const mergeBy = wf.merge.by;
+      const deliverableBefore = wf.deliverable;
+      if (typeof p.item === "string" && p.item.trim()) wf.item = str(p.item, 30).trim();
+      if (p.deliverable === "files" || p.deliverable === "pull-request") wf.deliverable = p.deliverable;
+      if (Array.isArray(p.stages) && p.stages.length)
+        wf.stages = p.stages.slice(0, 12).map((st) => ({
+          id: str(st?.id ?? "", 40),
+          name: str(st?.name ?? "", 30),
+          owner: str(st?.owner ?? "any", 40),
+          gate: st?.gate,
+          ...(st?.reviewer ? { reviewer: str(st.reviewer, 40) } : {}),
+        })); // normalizeConfig (in configChanged) checks owners, gates and ids
       Object.assign(wf.review, p.review ?? {});
       if (p.merge?.by === "human" || p.merge?.by === "lead") wf.merge.by = p.merge.by;
       Object.assign(wf.deploy, p.deploy ?? {});
       hub.configChanged();
+      if (wf.deliverable !== deliverableBefore) void sessions.recheckSetup();
       // The lead was told the old rule; tell it the new one now, so no restart is needed.
       const lead = leadOf(hub.snap.config);
       if (lead && wf.merge.by !== mergeBy) {

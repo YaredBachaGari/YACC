@@ -186,13 +186,13 @@ const studio = (): HqConfig => parseConfig(STUDIO, (rel) => studioFiles[rel] ?? 
   ok("role file: the lead reports to the CEO by name", lead.includes("You report to Abuti, the CEO (the human)."));
   ok("role file: org chart with reporting lines", lead.includes("- Abuti — CEO (the human)") && lead.includes("- Ada — Writer; reports to Leo"));
   ok("role file: the hirer sees the headcount limit", lead.includes("Headcount limit set by the CEO: 5 agents (the team has 4)."));
-  ok("role file: tools match the role", lead.includes("Your tools: create_board, create_task, update_task, assign_task, hire_agent, dismiss_agent, list_workers"));
+  ok("role file: tools match the role", lead.includes("Your tools: create_board, create_task, update_task, assign_task, approve_work, request_changes, hire_agent, dismiss_agent, list_workers"));
   const writer = roleMd(c.team[2], c);
   ok("role file: a writer gets writer rules, not coding rules", writer.includes("Write the script from the research.") && !/\bPR\b|gh pr|branch/.test(writer), writer);
   ok("role file: anyone can go to the CEO directly", writer.includes("You don't need to go through the lead for this."));
   ok("role file: anyone can message anyone", writer.includes("You can message any teammate with send_message, whatever the reporting lines."));
   ok("role file: a worker doesn't see the hiring limit", !writer.includes("Headcount limit"));
-  ok("role file: any role that takes tasks is told how", writer.includes("call get_my_task first") && writer.includes("Report with set_my_status") && !lead.includes("call get_my_task first"));
+  ok("role file: any role that takes tasks is told how", writer.includes("call get_my_task first") && writer.includes("call complete_stage") && !lead.includes("call get_my_task first"));
   ok("role file: local agents aren't told about sandbox blocks", !writer.includes("Your sandbox blocks most websites"));
 
   // The default coding team keeps the rules it had before roles existed.

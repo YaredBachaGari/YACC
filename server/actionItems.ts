@@ -42,6 +42,7 @@ export class ActionItems {
     if (!clean) throw new Error("Give the action item a short title.");
     const item: ActionItem = {
       id: `ai${Date.now().toString(36)}${++this.seq}`,
+      kind: "request",
       fromId,
       taskId: this.planner.currentTask(fromId)?.id ?? null,
       title: clean,
@@ -59,9 +60,44 @@ export class ActionItems {
     return item;
   }
 
+  /** Work waiting for the CEO's sign-off at a stage gate. Closing it approves the work or sends it back. */
+  addApproval(fromId: string, taskId: string, title: string, details: string): ActionItem {
+    // One open approval per task.
+    for (const old of this.items) if (old.kind === "approval" && old.taskId === taskId && old.status === "open") old.status = "dismissed";
+    const item: ActionItem = {
+      id: `ai${Date.now().toString(36)}${++this.seq}`,
+      kind: "approval",
+      fromId,
+      taskId,
+      title: title.slice(0, 160),
+      details: details.slice(0, 4000),
+      waiting: true,
+      status: "open",
+      note: null,
+      at: new Date().toISOString(),
+      closedAt: null,
+    };
+    this.items.unshift(item);
+    this.save();
+    this.hub.emit({ type: "action.updated", item: { ...item } });
+    return item;
+  }
+
   resolve(id: string, decision: "done" | "dismissed", note?: string) {
     const item = this.items.find((i) => i.id === id);
     if (!item || item.status !== "open") return;
+    if (item.kind === "approval" && item.taskId) {
+      // Approve = "done"; send back = "dismissed", and the note says what to change.
+      if (decision === "dismissed" && !note?.trim()) throw new Error("Say what needs to change.");
+      if (decision === "done") this.planner.approveWork("you", item.taskId, note);
+      else this.planner.requestChanges("you", item.taskId, note!);
+      item.status = decision;
+      item.note = note?.trim().slice(0, 1000) || null;
+      item.closedAt = new Date().toISOString();
+      this.save();
+      this.hub.emit({ type: "action.updated", item: { ...item } });
+      return;
+    }
     item.status = decision;
     item.note = note?.trim().slice(0, 1000) || null;
     item.closedAt = new Date().toISOString();

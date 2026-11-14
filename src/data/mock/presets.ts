@@ -1,4 +1,5 @@
 import { CEO_ID, LEAD_ROLE_ID, type AgentConfig, type Board, type HqConfig, type SandboxSettings, type Task } from "../types";
+import { defaultWorkflowParts } from "../workflow";
 import { DEFAULT_CEO_NAME, DEFAULT_MAX_AGENTS, DEVELOPER_INSTRUCTIONS, leadRole, normalizeConfig, roleSlug } from "../roles";
 
 /** A preset's settings, before the org parts every config has are filled in. */
@@ -92,6 +93,7 @@ const askwell: Preset = {
       agent("jim", "Jim", "Developer", "#ffd23a"),
     ],
     workflow: {
+      ...defaultWorkflowParts(true),
       review: { enabled: true, tool: "coderabbit", command: "" },
       merge: { by: "human" },
       deploy: { enabled: true, tool: "instacloud", command: "", perAgentEnvironments: true },
@@ -150,6 +152,7 @@ const bigTeam: Preset = {
       agent("sam", "Sam", "Docs", "#3ee0d0", { model: "Haiku", skills: ["document"] }),
     ],
     workflow: {
+      ...defaultWorkflowParts(true),
       review: { enabled: true, tool: "greptile", command: "" },
       merge: { by: "lead" },
       deploy: { enabled: true, tool: "vercel", command: "", perAgentEnvironments: false },
@@ -196,6 +199,7 @@ const duo: Preset = {
       agent("max", "Max", "Developer", "#29adff"),
     ],
     workflow: {
+      ...defaultWorkflowParts(true),
       review: { enabled: true, tool: "human", command: "" },
       merge: { by: "human" },
       deploy: { enabled: false, tool: "custom", command: "", perAgentEnvironments: false },

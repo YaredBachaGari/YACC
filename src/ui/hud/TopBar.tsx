@@ -37,6 +37,8 @@ export function TopBar() {
   const active = boards.filter((b) => b.status === "active");
   const openPrs = snap.pullRequests.filter((p) => !p.merged && !p.closed).length;
 
+  // Teams whose work is files have no pull requests to show.
+  const usesPrs = useOffice((st) => st.snap?.config.workflow.deliverable !== "files");
   return (
     <header className="panel fixed left-4 right-4 top-[10px] z-10 flex h-[50px] items-center gap-4 px-3">
       <div className="flex min-w-0 items-center gap-2.5">
@@ -122,9 +124,11 @@ export function TopBar() {
         <button className="btn text-[14px]" onClick={() => ui.openBoards(planBoardId ?? undefined)}>
           Boards
         </button>
-        <button className="btn text-[14px]" onClick={() => ui.openPrs()}>
-          PRs{openPrs ? ` · ${openPrs}` : ""}
-        </button>
+        {usesPrs && (
+          <button className="btn text-[14px]" onClick={() => ui.openPrs()}>
+            PRs{openPrs ? ` · ${openPrs}` : ""}
+          </button>
+        )}
         <button className="btn text-[14px]" onClick={() => ui.openTerminal()} title="Your own shell on this machine: the repo, an agent's folder or any folder">
           Terminal
         </button>

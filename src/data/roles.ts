@@ -3,6 +3,7 @@
 // that lives in each role's instructions.
 
 import { CEO_ID, LEAD_ROLE_ID, PERMISSIONS, type AgentConfig, type HqConfig, type Permission, type RoleConfig } from "./types";
+import { normalizeWorkflow } from "./workflow";
 
 export const DEFAULT_MAX_AGENTS = 8;
 /** Hard ceiling for the headcount limit (desks in the office, and a sane cost bound). */
@@ -18,10 +19,10 @@ export const roleSlug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-
 export const LEAD_DUTIES = `You are the lead. The CEO (the human) gives you goals. You turn them into finished work and report back.
 
 ## Your duties
-- Plan: break each request from the CEO into small tasks, each with a clear done-when.
+- Plan: break each request from the CEO into small tasks, each with a clear done-when. Every task moves through the team's workflow stages (see How work moves).
 - Assign: give each task to an agent whose role fits it and who is running and free (check list_workers).
 - Follow every task to completion. When an agent reports a task blocked, unblock it or reassign it.
-- Review what comes back against the task's done-when. If it falls short, send specific feedback with send_message and have it fixed.
+- Review what comes back against the task's done-when. When HQ asks you to review a stage, call approve_work, or request_changes with specific feedback.
 - Compile and summarize: when the work for a request is done, tell the CEO what was done, where the outputs are, and what is still open.
 - You do not do the tasks yourself. Your job is planning, review and reporting.
 
@@ -39,8 +40,9 @@ export const LEAD_INSTRUCTIONS = `${LEAD_DUTIES}\n\n${LEAD_CODING}`;
 /** A neutral starting point for a new role that does tasks. */
 export const WORKER_BASE_INSTRUCTIONS = `- Work only on the task you were given.
 - When HQ tells you to start a task, call get_my_task first.
-- Report with set_my_status: in-review when your output is ready to be checked, blocked (with the reason) when you cannot continue, done when it is finished.
-- set_my_status tells the lead automatically. Don't also send_message the same news.
+- When your part is finished, call complete_stage with a note saying what you did and where the output is. HQ passes it to the next stage or to whoever checks it.
+- If you are blocked or need a decision, call set_my_status blocked with the reason.
+- HQ tells the lead automatically. Don't also send_message the same news.
 - Need something from a teammate? Ask them directly with send_message.`;
 
 export const DEVELOPER_INSTRUCTIONS = `- Work only on the task you were given. One task = one branch = one PR.
@@ -92,16 +94,16 @@ export const COMMON_TOOLS = ["list_workers", "get_status", "list_tasks", "send_m
 export const PERMISSION_TOOLS: Record<Permission, readonly string[]> = {
   plan: ["create_board", "create_task", "update_task"],
   assign: ["assign_task"],
-  work: ["get_my_task", "set_my_status"],
-  review: [],
-  approve: [],
+  work: ["get_my_task", "set_my_status", "complete_stage"],
+  review: ["approve_work", "request_changes"],
+  approve: ["approve_work", "request_changes"],
   hire: ["hire_agent", "dismiss_agent"],
 };
 
 /** The Team MCP tools a role gets, in a stable order. */
 export function toolsFor(role: Pick<RoleConfig, "can"> | undefined): string[] {
   const own = PERMISSIONS.filter((p) => role?.can.includes(p)).flatMap((p) => PERMISSION_TOOLS[p]);
-  return [...own, ...COMMON_TOOLS];
+  return [...new Set([...own, ...COMMON_TOOLS])];
 }
 
 // ---------------------------------------------------------------- keeping a config consistent
@@ -188,6 +190,9 @@ export function normalizeConfig(cfg: HqConfig): string[] {
       at = cfg.team.find((x) => x.id === at)?.reportsTo ?? CEO_ID;
     }
   }
+
+  // The workflow names roles, so it is checked once the roles are settled.
+  if (cfg.workflow) fixed.push(...normalizeWorkflow(cfg));
 
   // Derived fields the UI and the office read.
   for (const a of cfg.team) {

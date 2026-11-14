@@ -498,7 +498,7 @@ export class Sessions {
   // ------------------------------------------------------------ setup helper
 
   async recheckSetup() {
-    this.hub.setSetup(await runSetupChecks(this.hub.repo, this.hub.snap.config.team));
+    this.hub.setSetup(await runSetupChecks(this.hub.repo, this.hub.snap.config.team, this.hub.snap.config.workflow.deliverable === "pull-request"));
   }
 
   /** Runs a program in a terminal the browser can watch and type into (id must start with "setup:"). */

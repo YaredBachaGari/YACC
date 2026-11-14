@@ -12,7 +12,7 @@ import { WorkflowSettings } from "./WorkflowSettings";
 const TABS: { id: SettingsTab; label: string; hint: string }[] = [
   { id: "team", label: "Team", hint: "CEO, agents, reporting" },
   { id: "roles", label: "Roles", hint: "Permissions, instructions" },
-  { id: "workflow", label: "Workflow", hint: "Review, merge, deploy" },
+  { id: "workflow", label: "Workflow", hint: "Stages, reviews, approvals" },
   { id: "stack", label: "Stack", hint: "Frameworks, tools" },
   { id: "mcp", label: "MCP", hint: "Servers for agents" },
   { id: "sandbox", label: "Sandbox", hint: "Network, proxy, secrets" },

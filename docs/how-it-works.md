@@ -187,3 +187,29 @@ team:
 ```
 
 Boards and tasks stay in `.yacc/plan.json`: they are data, not settings. Secrets never go in either file.
+
+## How work moves: stages and gates
+
+Every task goes through the workflow's **stages** in order (`workflow.stages` in `config.yml`, or Settings → Workflow). Each stage names the role that does it and a **gate**: what must happen before the work moves on.
+
+| Gate | What happens when the owner calls `complete_stage` |
+| --- | --- |
+| `none` | The work moves to the next stage at once. |
+| `review` | A teammate whose role has `review` checks it (the stage's `reviewer` role, if set). They call `approve_work` or `request_changes`. |
+| `approval` | The same, with a role that has `approve`. |
+| `ceo` | It comes to you as an action item: **Approve**, or **Send back** with what to change. |
+| `pull-request` | The owner opens a PR; review and merge on GitHub finish it. Last stage only, and only when finished work is pull requests. |
+
+When a stage is finished, HQ hands the work to someone with the next stage's role, preferring whoever did the last stage, then agents that are running and free, and tells them what the last person said. When nobody has that role, the work waits unassigned and the lead is told to assign it or hire. A review never goes to the person who did the work; when nobody can review, it comes to you. When the last stage is finished, the work is done and the lead is told.
+
+```yaml
+workflow:
+  item: Piece            # what the board and agents call one unit of work
+  deliverable: files     # or pull-request (needs a GitHub remote)
+  stages:
+    - { name: Research, owner: researcher }
+    - { name: Script, owner: writer, gate: review, reviewer: editor }
+    - { name: Approve, owner: editor, gate: ceo }
+```
+
+With `deliverable: files`, HQ doesn't use GitHub at all: no PR polling, no GitHub setup checks, no PRs button. A project with a GitHub remote starts with the coding flow (one Build stage ending in a pull request); one without starts with a Do stage that the lead reviews.

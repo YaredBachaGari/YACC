@@ -13,6 +13,7 @@ import type { Planner } from "./planner";
 import { can, managerName, roleOf, toolsFor } from "../src/data/roles";
 import type { Permission } from "../src/data/types";
 import type { Team } from "./team";
+import { stageOf } from "../src/data/workflow";
 
 type Result = { content: { type: "text"; text: string }[]; isError?: boolean };
 
@@ -127,9 +128,10 @@ function buildServer(hub: Hub, planner: Planner, team: Team, me: string): McpSer
         files: z.array(z.string()).optional().describe("The only files/folders this task may edit"),
         doneWhen: z.string().optional().describe("Acceptance criteria"),
         needs: z.array(z.string()).optional().describe("Task ids that must be done first"),
+        stage: z.string().optional().describe("Workflow stage to start in (id or name). Left out: the first stage."),
       },
     },
-    guard((args: { title: string; boardId?: string; description?: string; files?: string[]; doneWhen?: string; needs?: string[] }) => {
+    guard((args: { title: string; boardId?: string; description?: string; files?: string[]; doneWhen?: string; needs?: string[]; stage?: string }) => {
       needs("plan");
       return ok(planner.createTask(args, me));
     }),
@@ -147,9 +149,10 @@ function buildServer(hub: Hub, planner: Planner, team: Team, me: string): McpSer
         doneWhen: z.string().optional(),
         needs: z.array(z.string()).optional(),
         status: z.enum(["todo", "in-progress", "in-review", "done", "blocked"]).optional(),
+        stage: z.string().optional().describe("Move it to another workflow stage (id or name)"),
       },
     },
-    guard(({ taskId, ...patch }: { taskId: string; title?: string; description?: string; files?: string[]; doneWhen?: string; needs?: string[]; status?: "todo" | "in-progress" | "in-review" | "done" | "blocked" }) => {
+    guard(({ taskId, ...patch }: { taskId: string; title?: string; description?: string; files?: string[]; doneWhen?: string; needs?: string[]; status?: "todo" | "in-progress" | "in-review" | "done" | "blocked"; stage?: string }) => {
       needs("plan");
       return ok(planner.updateTask(taskId, patch));
     }),
@@ -177,11 +180,13 @@ function buildServer(hub: Hub, planner: Planner, team: Team, me: string): McpSer
       if (!t) return ok("You have no task right now. Wait for the lead, or ask with send_message.");
       if (t.status === "todo") planner.setStatus(me, "in-progress");
       const blockedBy = t.needs.filter((n) => planner.task(n)?.status !== "done");
-      // PR wording only for projects on GitHub; other teams follow their role's instructions.
-      const rules = hub.repo.github
-        ? "Work only on this task, on its own branch. Edit only the listed files. Title the PR `[" + t.id + "] " + t.title + "`. When the PR is open, call set_my_status with in-review and the PR number."
-        : "Work only on this task. When your output is ready to be checked, call set_my_status with in-review and a one-line note saying where it is.";
-      return ok({ ...taskView(t.id), waitingOn: blockedBy, rules });
+      const stage = stageOf(hub.snap.config.workflow, t);
+      // PR wording only for a pull-request stage; other stages end with complete_stage.
+      const rules =
+        stage.gate === "pull-request"
+          ? "Work only on this task, on its own branch. Edit only the listed files. Title the PR `[" + t.id + "] " + t.title + "`. When the PR is open, call set_my_status with in-review and the PR number."
+          : `Work only on this task. You are doing the ${stage.name} stage. When your part is finished, call complete_stage with a note saying what you did and where the output is.`;
+      return ok({ ...taskView(t.id), stage: stage.name, waitingOn: blockedBy, rules });
     }),
   );
 
@@ -199,6 +204,47 @@ function buildServer(hub: Hub, planner: Planner, team: Team, me: string): McpSer
       needs("work");
       const t = planner.setStatus(me, status, note, prNumber);
       return ok(`${t.id} is now ${t.status}.`);
+    }),
+  );
+
+  server.registerTool(
+    "complete_stage",
+    {
+      description:
+        "Say your part of your current task's stage is finished. HQ moves it on: to the next stage, to a teammate to review, or to the CEO to approve, as the workflow says. Not for pull-request stages: there, open the PR and call set_my_status in-review.",
+      inputSchema: { note: z.string().optional().describe("What you did and where the output is (file paths). The next person reads it.") },
+    },
+    guard(({ note }: { note?: string }) => {
+      needs("work");
+      const t = planner.completeStage(me, note);
+      const where = t.status === "done" ? "It is done." : t.reviewerId ? `It waits for ${t.reviewerId === "ceo" ? "the CEO" : hub.name(t.reviewerId)} to check it.` : `It moved to ${t.stage} (${t.ownerId ? hub.name(t.ownerId) : "unassigned"}).`;
+      return ok(`${t.id}: ${where}`);
+    }),
+  );
+
+  server.registerTool(
+    "approve_work",
+    {
+      description: "Pass work HQ asked you to review or sign off. It moves to the next stage, or is done if that was the last.",
+      inputSchema: { taskId: z.string(), note: z.string().optional().describe("Anything the next person should know") },
+    },
+    guard(({ taskId, note }: { taskId: string; note?: string }) => {
+      if (!can(hub.snap.config, hub.cfg(me), "review") && !can(hub.snap.config, hub.cfg(me), "approve")) needs("review");
+      const t = planner.approveWork(me, taskId, note);
+      return ok(`${t.id} approved. ${t.status === "done" ? "It is done." : `Now in ${t.stage}.`}`);
+    }),
+  );
+
+  server.registerTool(
+    "request_changes",
+    {
+      description: "Send work HQ asked you to review back to whoever did it, with what to fix. They fix it and send it back to you.",
+      inputSchema: { taskId: z.string(), feedback: z.string().describe("Specific changes needed") },
+    },
+    guard(({ taskId, feedback }: { taskId: string; feedback: string }) => {
+      if (!can(hub.snap.config, hub.cfg(me), "review") && !can(hub.snap.config, hub.cfg(me), "approve")) needs("review");
+      const t = planner.requestChanges(me, taskId, feedback);
+      return ok(`${t.id} sent back to ${t.ownerId ? hub.name(t.ownerId) : "the team (unassigned)"}.`);
     }),
   );
 

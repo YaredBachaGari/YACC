@@ -2,6 +2,7 @@ import type { DeployTool, ReviewTool } from "../../data/types";
 import { deployToolLabel, officeActions, reviewToolLabel, useOffice } from "../../store/office";
 import { Field, SectionTitle } from "../kit";
 import { CommitInput, Toggle } from "./controls";
+import { StagesSection } from "./StagesSection";
 
 const REVIEW_HINT: Record<ReviewTool, string> = {
   coderabbit: "Reads CodeRabbit's check and comments on each PR.",
@@ -22,10 +23,17 @@ export function WorkflowSettings() {
     </span>
   );
 
+  if (wf.deliverable !== "pull-request")
+    return (
+      <div className="flex flex-col gap-6">
+        <StagesSection />
+      </div>
+    );
   return (
     <div className="flex flex-col gap-6">
+      <StagesSection />
       <section>
-        <SectionTitle>Pipeline</SectionTitle>
+        <SectionTitle>Pull requests on GitHub</SectionTitle>
         <div className="flex flex-wrap items-center gap-2 text-[14px]">
           {stage("Build", true, "agent in its sandbox")}
           <span>→</span>
