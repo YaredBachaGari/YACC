@@ -117,6 +117,7 @@ const agentSchema = z.object({
   sandbox: sandboxSchema,
   hiredBy: z.string().optional(),
   temporary: z.boolean().optional(),
+  desk: z.number().int().min(1).optional(),
 });
 
 const roleSchema = z.object({
@@ -206,6 +207,7 @@ export function serializeConfig(cfg: HqConfig): { yaml: string; files: Record<st
       color: a.color,
       ...(a.hiredBy ? { hiredBy: a.hiredBy } : {}),
       ...(a.temporary ? { temporary: true } : {}),
+      ...(a.desk !== undefined ? { desk: a.desk + 1 } : {}), // desks are numbered from 1 in the file, as on screen
       notes: a.roleMd,
       skills: a.skills,
       mcp: a.mcp ?? [],
@@ -270,6 +272,7 @@ export function parseConfig(text: string, readFile: (relPath: string) => string 
       mcp: a.mcp,
       ...(a.hiredBy ? { hiredBy: a.hiredBy } : {}),
       ...(a.temporary ? { temporary: true } : {}),
+      ...(a.desk !== undefined ? { desk: a.desk - 1 } : {}),
     })),
     workflow: { ...f.workflow, stages: f.workflow.stages.map((st) => ({ ...st, id: st.id ?? roleSlug(st.name) })) },
     ...(f.stack ? { stack: f.stack as HqConfig["stack"] } : {}),

@@ -2,15 +2,31 @@ import { useState } from "react";
 import { DEFAULT_OFFICE_NAME, OFFICE_NAME_MAX } from "../../data/names";
 import { FONT_STYLES, savedFont, setFont, type FontStyle } from "../../theme/fonts";
 import { officeActions, useOffice } from "../../store/office";
+import { ui, useUi, type OfficeStyle } from "../../store/ui";
 import { Field, SectionTitle } from "../kit";
 import { CommitInput, Toggle } from "./controls";
+
+function OfficeStylePicker() {
+  const style = useUi((s) => s.officeStyle);
+  return (
+    <section className="border-[3px] border-ink bg-white p-3">
+      <SectionTitle>Office style</SectionTitle>
+      <Field label="How the office is drawn" hint="Saved in this browser only.">
+        <select className="field w-[320px]" value={style} onChange={(e) => ui.setOfficeStyle(e.target.value as OfficeStyle)}>
+          <option value="modern">Modern: everyone at their own desk</option>
+          <option value="classic">Classic: pixel office with walking robots and the PR belt</option>
+        </select>
+      </Field>
+    </section>
+  );
+}
 
 function FontPicker() {
   const [font, setCurrent] = useState(savedFont);
   return (
     <section className="border-[3px] border-ink bg-white p-3">
       <SectionTitle>Font</SectionTitle>
-      <Field label="Font style" hint="For panels, drawers, settings and agent terminals. The office stays pixel. Saved in this browser only.">
+      <Field label="Font style" hint="For panels, drawers, settings and agent terminals. The classic office stays pixel. Saved in this browser only.">
         <select
           className="field w-[320px]"
           value={font}
@@ -37,6 +53,7 @@ export function ProjectSettings() {
   return (
     <div className="flex flex-col gap-5">
       <SaveTemplate />
+      <OfficeStylePicker />
       <FontPicker />
       <section className="grid grid-cols-2 gap-3 border-[3px] border-ink bg-white p-3">
         <div className="col-span-2">

@@ -203,6 +203,27 @@ export function normalizeConfig(cfg: HqConfig): string[] {
   // The workflow names roles, so it is checked once the roles are settled.
   if (cfg.workflow) fixed.push(...normalizeWorkflow(cfg));
 
+  // Desks: every agent but the lead has one, each its own. A desk set in config.yml is kept; the rest get the lowest free.
+  const taken = new Set<number>();
+  for (const a of cfg.team) {
+    if (a.roleId === LEAD_ROLE_ID) {
+      delete a.desk;
+      continue;
+    }
+    const d = Number(a.desk);
+    if (Number.isInteger(d) && d >= 0 && d < MAX_AGENTS_CEILING && !taken.has(d)) {
+      a.desk = d;
+      taken.add(d);
+    } else delete a.desk;
+  }
+  for (const a of cfg.team)
+    if (a.roleId !== LEAD_ROLE_ID && a.desk === undefined) {
+      let d = 0;
+      while (taken.has(d)) d++;
+      a.desk = d;
+      taken.add(d);
+    }
+
   // Derived fields the UI and the office read.
   for (const a of cfg.team) {
     a.role = cfg.roles.find((r) => r.id === a.roleId)?.title ?? a.roleId;
