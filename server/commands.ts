@@ -1,7 +1,7 @@
 // Browser commands → server actions. Names match OfficeDataSource methods.
 
 import { AGENT_CLIS, CEO_ID, LEAD_ROLE_ID, PERMISSIONS, PROVIDER_IDS, SERVICE_KEYS, type AgentCli, type AgentConfig, type AgentPatch, type NewRoleInput, type OrgPatch, type ProjectMemory, type ReviewTool, type RolePatch, type WelcomeInput, type NewMcpServer, type Board, type NewAgentInput, type ProjectConfig, type RemoveAgentOptions, type RoleConfig, type SandboxSettings, type SetupCheckId, type WorkflowPatch } from "../src/data/types";
-import { DEVELOPER_INSTRUCTIONS, MAX_AGENTS_CEILING, WORKER_BASE_INSTRUCTIONS, findRole, freeRoleId, leadOf } from "../src/data/roles";
+import { DEVELOPER_INSTRUCTIONS, MAX_AGENTS_CEILING, WORKER_BASE_INSTRUCTIONS, findRole, freeRoleId, leadOf, wouldLoop } from "../src/data/roles";
 import { LEAD_NAME, OFFICE_NAME_MAX } from "../src/data/names";
 import { STACK_CATEGORIES, stackSkills, stackTool, type StackChoice, type StackConfig } from "../src/data/stack";
 import { resolveAccess } from "./access";
@@ -114,8 +114,10 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx
         cli: AGENT_CLIS.find((c) => c === input.cli),
         model: typeof input.model === "string" ? str(input.model, 60) : undefined,
         mode: input.mode === "local" ? "local" : "sandbox",
+        reportsTo: typeof input.reportsTo === "string" && (input.reportsTo === CEO_ID || hub.cfg(input.reportsTo)) ? input.reportsTo : undefined,
       });
-      hub.activity("config", null, `Added ${agent.name} (${agent.role}). Press Start to launch their session.`);
+      const boss = agent.reportsTo === leadOf(cfg)?.id ? "" : `, reporting to ${agent.reportsTo === CEO_ID ? cfg.ceo.name : hub.name(agent.reportsTo)}`;
+      hub.activity("config", null, `Added ${agent.name} (${agent.role})${boss}. Press Start to launch their session.`);
     },
 
     updateAgent: (id, patch) => {
@@ -127,7 +129,10 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx
       const cfg = hub.snap.config;
       // The lead keeps its role, and nobody is made lead this way: a team has exactly one.
       if (typeof p.roleId === "string" && agent.roleId !== LEAD_ROLE_ID && p.roleId !== LEAD_ROLE_ID && cfg.roles.some((r) => r.id === p.roleId)) agent.roleId = p.roleId;
-      if (typeof p.reportsTo === "string" && agent.roleId !== LEAD_ROLE_ID && (p.reportsTo === CEO_ID || (p.reportsTo !== agent.id && hub.cfg(p.reportsTo)))) agent.reportsTo = p.reportsTo;
+      if (typeof p.reportsTo === "string" && agent.roleId !== LEAD_ROLE_ID && p.reportsTo !== agent.reportsTo && (p.reportsTo === CEO_ID || (p.reportsTo !== agent.id && hub.cfg(p.reportsTo)))) {
+        if (wouldLoop(cfg.team, agent.id, p.reportsTo)) hub.activity("config", null, `${agent.name} can't report to ${hub.name(p.reportsTo)}: ${hub.name(p.reportsTo)} already reports to ${agent.name}, directly or through someone.`);
+        else agent.reportsTo = p.reportsTo;
+      }
       if (p.mode === "sandbox" || p.mode === "local") agent.mode = p.mode;
       if (p.avatar !== undefined) {
         const avatar = withLook(agent.avatar, p.avatar);
@@ -468,6 +473,7 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx
           owner: str(st?.owner ?? "any", 40),
           gate: st?.gate,
           ...(st?.reviewer ? { reviewer: str(st.reviewer, 40) } : {}),
+          ...(typeof st?.description === "string" && st.description.trim() ? { description: str(st.description, 400) } : {}),
         })); // normalizeConfig (in configChanged) checks owners, gates and ids
       Object.assign(wf.review, p.review ?? {});
       if (p.merge?.by === "human" || p.merge?.by === "lead") wf.merge.by = p.merge.by;

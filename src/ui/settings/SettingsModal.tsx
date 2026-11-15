@@ -7,12 +7,14 @@ import { StackSettings } from "./StackSettings";
 import { McpSettings } from "./McpSettings";
 import { ModelsSettings } from "./ModelsSettings";
 import { MemorySettings } from "./MemorySettings";
+import { OrgChart } from "./OrgChart";
 import { RolesSettings } from "./RolesSettings";
 import { TeamSettings } from "./TeamSettings";
 import { WorkflowSettings } from "./WorkflowSettings";
 
 const TABS: { id: SettingsTab; label: string; hint: string }[] = [
   { id: "team", label: "Team", hint: "CEO, agents, reporting" },
+  { id: "org", label: "Org chart", hint: "Who reports to whom" },
   { id: "roles", label: "Roles", hint: "Permissions, instructions" },
   { id: "models", label: "Models", hint: "Providers, sign-in, research" },
   { id: "memory", label: "Memory", hint: "Brief, decisions, lessons" },
@@ -51,7 +53,7 @@ export function SettingsModal() {
           </button>
         </div>
         <div className="flex min-h-0 flex-1">
-          <nav className="flex w-[200px] shrink-0 flex-col gap-2 border-r-[3px] border-ink bg-cream-2 p-3" aria-label="Settings sections">
+          <nav className="scroll-thin flex w-[200px] shrink-0 flex-col gap-2 overflow-y-auto border-r-[3px] border-ink bg-cream-2 p-3" aria-label="Settings sections">
             {TABS.map((t) => (
               <button
                 key={t.id}
@@ -66,6 +68,7 @@ export function SettingsModal() {
           </nav>
           <div className="scroll-thin min-w-0 flex-1 overflow-y-auto p-5">
             {settings.tab === "team" && <TeamSettings />}
+            {settings.tab === "org" && <OrgChart />}
             {settings.tab === "roles" && <RolesSettings />}
             {settings.tab === "models" && <ModelsSettings />}
             {settings.tab === "memory" && <MemorySettings />}

@@ -199,7 +199,7 @@ function buildServer(hub: Hub, planner: Planner, team: Team, extras: McpExtras, 
       const rules =
         stage.gate === "pull-request"
           ? "Work only on this task, on its own branch. Edit only the listed files. Title the PR `[" + t.id + "] " + t.title + "`. When the PR is open, call set_my_status with in-review and the PR number."
-          : `Work only on this task. You are doing the ${stage.name} stage. When your part is finished, call complete_stage with a note saying what you did and where the output is.`;
+          : `Work only on this task. You are doing the ${stage.name} stage${stage.description ? ` (done when: ${stage.description})` : ""}. When your part is finished, call complete_stage with a note saying what you did and where the output is.`;
       return ok({ ...taskView(t.id), stage: stage.name, waitingOn: blockedBy, rules });
     }),
   );

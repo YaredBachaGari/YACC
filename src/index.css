@@ -69,6 +69,73 @@ html[data-font] .font-term {
 }
 
 @layer components {
+  /* Org chart: each level is a row of <li>, joined to its manager by ink lines. */
+  .org-tree ul {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    margin: 0;
+    padding: 18px 0 0;
+  }
+  .org-tree li {
+    position: relative;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 18px 6px 0;
+  }
+  .org-tree li::before,
+  .org-tree li::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 50%;
+    width: 50%;
+    height: 18px;
+    border-top: 3px solid var(--color-ink);
+  }
+  .org-tree li::after {
+    right: auto;
+    left: 50%;
+    border-left: 3px solid var(--color-ink);
+  }
+  .org-tree li:only-child::before {
+    display: none;
+  }
+  .org-tree li:only-child::after {
+    border-top: 0;
+    left: calc(50% - 1.5px);
+  }
+  .org-tree li:first-child::before,
+  .org-tree li:last-child::after {
+    border-top: 0;
+  }
+  .org-tree li:last-child::before {
+    border-right: 3px solid var(--color-ink);
+  }
+  .org-tree li:first-child:not(:only-child)::after {
+    border-radius: 0;
+  }
+  .org-tree ul ul::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: calc(50% - 1.5px);
+    height: 18px;
+    border-left: 3px solid var(--color-ink);
+  }
+  .org-tree > ul {
+    padding-top: 0;
+  }
+  .org-tree > ul > li {
+    padding-top: 0;
+  }
+  .org-tree > ul > li::before,
+  .org-tree > ul > li::after {
+    display: none;
+  }
+
   /* Chunky game panel: ink outline, light bevel, hard drop shadow (no blur) */
   .panel {
     background: var(--color-cream);
