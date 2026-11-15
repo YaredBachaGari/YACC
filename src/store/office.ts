@@ -128,6 +128,8 @@ function reduce(snap: OfficeSnapshot, e: OfficeEvent): OfficeSnapshot {
       return { ...snap, usage: e.usage };
     case "skills.updated":
       return { ...snap, projectSkills: e.skills };
+    case "schedules.updated":
+      return { ...snap, schedules: e.schedules };
   }
 }
 
@@ -208,6 +210,9 @@ export const officeActions = {
   updateOrg: source.updateOrg.bind(source),
   setAvatarImage: source.setAvatarImage.bind(source),
   updateToolkits: source.updateToolkits.bind(source),
+  updateMessaging: source.updateMessaging.bind(source),
+  updateSchedules: source.updateSchedules.bind(source),
+  runSchedule: source.runSchedule.bind(source),
   updateProjectSkills: source.updateProjectSkills.bind(source),
   saveProjectSkill: source.saveProjectSkill.bind(source),
   removeProjectSkill: source.removeProjectSkill.bind(source),

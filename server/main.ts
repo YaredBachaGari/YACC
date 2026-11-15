@@ -30,6 +30,7 @@ import { Memory } from "./memory";
 import { SharedFiles } from "./shared";
 import { listTemplates } from "./templates";
 import { listProjectSkills } from "./projectSkills";
+import { Scheduler } from "./scheduler";
 import { Budgets, Usage } from "./usage";
 import { hookCallbacks } from "./hooks";
 
@@ -82,6 +83,7 @@ async function main() {
   void sbx.refresh();
   void mcp.refresh();
   const planner = new Planner(hub, inbox);
+  const scheduler = new Scheduler(hub, planner);
   planner.actions = new ActionItems(hub, planner);
   const briefings = new Briefings(hub, planner);
   const shared = new SharedFiles(hub);
@@ -157,7 +159,7 @@ async function main() {
     agentToken: token,
     distDir: dev ? null : distDir,
     allowedOrigins: [uiOrigin, `http://127.0.0.1:${uiPort}`, `http://localhost:${port}`, `http://127.0.0.1:${port}`],
-    commands: makeCommands(hub, sessions, planner, sbx, mcp, team, { briefings, memory, budgets }),
+    commands: makeCommands(hub, sessions, planner, sbx, mcp, team, { briefings, memory, budgets, scheduler }),
     usage,
   });
   // Settings edited by hand in .yacc/config.yml (or roles/*.md) are picked up while HQ runs.
@@ -167,10 +169,12 @@ async function main() {
     if (refused) return hub.activity("config", null, `Your edit to config.yml wasn't applied: ${refused}`);
     hub.snap.projectSkills = listProjectSkills(repo.root);
     hub.emit({ type: "skills.updated", skills: structuredClone(hub.snap.projectSkills) });
+    scheduler.sync();
     hub.activity("config", null, `Settings reloaded from config.yml.${result.fixed.length ? ` Adjusted: ${result.fixed.join(" ")}` : ""} Role changes reach an agent on its next start.`);
     void sessions.recheckSetup();
   });
   sessions.startPolling();
+  if (!hub.snap.welcome) scheduler.start();
   sbx.startApprovalPolling();
   const github = new GitHubSync(hub, planner, repo.github);
   github.start();
@@ -190,6 +194,7 @@ async function main() {
     clearInterval(budgetTimer);
     usage.flush();
     stopWatching();
+    scheduler.stop();
     sbx.stopApprovalPolling();
     github.stop();
     process.exit(0);

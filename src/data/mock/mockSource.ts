@@ -5,6 +5,8 @@ import { stackDomains } from "../stack";
 import { HOST_TERMINAL, LEAD_ROLE_ID, PERMISSIONS, type AccessRequest, AgentConfig, AgentPatch, Board, NewAgentInput, NewRoleInput, OrgPatch, ProjectMemory, ProjectConfig, RolePatch, SandboxSettings, WorkflowPatch } from "../types";
 import { MAX_AGENTS_CEILING, WORKER_BASE_INSTRUCTIONS, findRole, freeRoleId, wouldLoop } from "../roles";
 import { nextAgentName } from "../names";
+import { channelsOf, cleanMessaging, isChannel, type MessagingConfig } from "../messaging";
+import { cleanSchedules, fill, nextRun, type Schedule } from "../schedules";
 import { SKILL_NAME, cleanProjectSkills, cleanToolkits, type ProjectSkillChoice, type ToolkitChoice } from "../toolkits";
 import { defaultPresetId, presets, type Preset } from "./presets";
 import { Simulation } from "./simulation";
@@ -39,7 +41,19 @@ export function createMockSource(): OfficeDataSource {
       },
     ],
   ]);
+  const mockScheduleRuns = new Map<string, { at: string; result: string }>();
+  const publishMockSchedules = () => {
+    const now = new Date();
+    world.snap.schedules = (world.snap.config.schedules ?? []).map((s) => ({
+      id: s.id,
+      lastRun: mockScheduleRuns.get(s.id)?.at ?? null,
+      lastResult: mockScheduleRuns.get(s.id)?.result ?? null,
+      nextRun: s.enabled && s.every ? (nextRun(s, now)?.toISOString() ?? null) : null,
+    }));
+    listener?.({ type: "schedules.updated", schedules: structuredClone(world.snap.schedules) });
+  };
   const publishMockSkills = () => {
+    world.snap.schedules = (world.snap.config.schedules ?? []).map((s) => ({ id: s.id, lastRun: null, lastResult: null, nextRun: s.enabled && s.every ? (nextRun(s, new Date())?.toISOString() ?? null) : null }));
     world.snap.projectSkills = [...mockSkills.values()].sort((a, b) => a.name.localeCompare(b.name)).map((s) => ({ name: s.name, description: s.description, problem: null }));
     listener?.({ type: "skills.updated", skills: structuredClone(world.snap.projectSkills) });
   };
@@ -61,6 +75,7 @@ export function createMockSource(): OfficeDataSource {
   }
 
   function boot() {
+    world.snap.schedules = (world.snap.config.schedules ?? []).map((s) => ({ id: s.id, lastRun: null, lastResult: null, nextRun: s.enabled && s.every ? (nextRun(s, new Date())?.toISOString() ?? null) : null }));
     world.snap.projectSkills = [...mockSkills.values()].sort((a, b) => a.name.localeCompare(b.name)).map((x) => ({ name: x.name, description: x.description, problem: null }));
     world.setEmitter((e) => listener?.(e));
     listener?.({ type: "snapshot", snapshot: structuredClone(world.snap) });
@@ -175,7 +190,13 @@ export function createMockSource(): OfficeDataSource {
     },
 
     sendMessage(toId, text) {
-      if (!world.cfg(toId) || !text.trim()) return;
+      if (!text.trim()) return;
+      if (isChannel(toId)) {
+        if (!channelsOf(world.snap.config).some((c) => c.id === toId)) return;
+        world.message("you", toId, text.trim());
+        return;
+      }
+      if (!world.cfg(toId)) return;
       world.message("you", toId, text.trim());
       world.after(1.2, () => world.write(toId, T.cannedReply(!!world.cfg(toId)?.isLead, text.length)));
     },
@@ -537,6 +558,43 @@ export function createMockSource(): OfficeDataSource {
         if (patch.budget) cfg.limits.budget = patch.budget;
         else delete cfg.limits.budget;
       }
+      world.configChanged();
+    },
+
+    updateSchedules(list: Schedule[]) {
+      const cfg = world.snap.config;
+      const clean = cleanSchedules(list);
+      if (clean.length) cfg.schedules = clean;
+      else delete cfg.schedules;
+      world.configChanged();
+      publishMockSchedules();
+    },
+
+    runSchedule(id: string) {
+      const s = world.snap.config.schedules?.find((x) => x.id === id);
+      if (!s) return;
+      const lead = world.lead();
+      const tag = `[Schedule: ${s.name}]`;
+      const vars = { date: new Date().toISOString().slice(0, 10) };
+      let result: string;
+      if (s.action === "message") {
+        const to = !s.to || s.to === "lead" ? lead.id : s.to;
+        world.message("hq", to, `${tag} ${fill(s.text, vars)}`);
+        result = isChannel(to) ? `posted to ${to}` : `message sent to ${world.name(to)}`;
+      } else {
+        world.message("hq", lead.id, `${tag} New task: ${fill(s.title ?? s.name, vars)}. Plan it and assign it.`);
+        result = "added a task for the lead to assign";
+      }
+      mockScheduleRuns.set(id, { at: new Date().toISOString(), result });
+      world.activity("config", null, `You ran "${s.name}": ${result}`);
+      publishMockSchedules();
+    },
+
+    updateMessaging(m: MessagingConfig) {
+      const cfg = world.snap.config;
+      const clean = cleanMessaging(m, cfg.roles.map((r) => r.id));
+      if (clean) cfg.messaging = clean;
+      else delete cfg.messaging;
       world.configChanged();
     },
 

@@ -13,6 +13,7 @@ import { BUILT_IN_TEMPLATES, type Template, type TemplateSkill } from "../src/da
 import { AGENT_CLIS, GATES, LEAD_ROLE_ID, PERMISSIONS, type HqConfig } from "../src/data/types";
 import { cleanProjectSkills, cleanToolkits, parseSkillMd, projectSkillsYaml, toolkitsYaml } from "../src/data/toolkits";
 import { MCP_NAME } from "./sbxMcp";
+import { cleanSchedules } from "../src/data/schedules";
 import { skillsDir } from "./projectSkills";
 
 const roleFileRef = (id: string) => `roles/${roleSlug(id)}.md`;
@@ -34,6 +35,8 @@ const schema = z.object({
   toolkits: z.array(z.unknown()).optional(),
   /** The template's own skills, in skills/<name>/SKILL.md: a name (every role) or { name, roles }. */
   skills: z.array(z.unknown()).optional(),
+  /** Work that starts on its own (schedules.ts). */
+  schedules: z.array(z.unknown()).optional(),
 });
 
 /** Reads one template folder. Throws with a message saying what is wrong. */
@@ -82,6 +85,7 @@ export function readTemplate(dir: string, source: Template["source"]): Template 
     ...(t.brief ? { brief: text(t.brief) } : {}),
     ...(toolkits.length ? { toolkits } : {}),
     ...(skills.length ? { skills } : {}),
+    ...(cleanSchedules(t.schedules).length ? { schedules: cleanSchedules(t.schedules) } : {}),
   };
 }
 
@@ -142,6 +146,7 @@ export function saveTemplate(cfg: HqConfig, brief: string, name: string, where: 
     ...(brief.trim() ? { brief: "brief.md" } : {}),
     ...(cfg.toolkits?.length ? { toolkits: toolkitsYaml(cfg.toolkits) } : {}),
     ...(skills.length ? { skills: projectSkillsYaml(skills) } : {}),
+    ...(cfg.schedules?.length ? { schedules: cfg.schedules } : {}),
   };
   writeFileSync(join(dir, "template.yml"), `# A YACC team template. Edit by hand or save again from Settings → Project.\n${toYaml(doc, { lineWidth: 0 })}`);
   return dir;

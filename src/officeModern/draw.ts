@@ -4,6 +4,7 @@
 
 import type { AgentConfig, AgentStatus, AgentState, AvatarConfig, OfficeSnapshot } from "../data/types";
 import { stageOf } from "../data/workflow";
+import { channelMembers, isChannel } from "../data/messaging";
 import { dot, drawAvatar, drawHands, lookFor, round, shade } from "./avatar";
 import type { ModernLayout, Rect } from "./layout";
 import { THEMES, type OfficeTheme } from "./themes";
@@ -584,9 +585,19 @@ export function drawMessages(g: CanvasRenderingContext2D, L: ModernLayout, f: Fr
   for (const m of f.snap.messages.slice(0, 12)) {
     const age = (now - Date.parse(m.at)) / 1000;
     if (age < 0 || age > 3) continue;
-    const a = m.fromId === "you" ? { x: L.ceo.x + L.ceo.w / 2, y: L.ceo.y + 70 } : seatOf(m.fromId);
-    const b = seatOf(m.toId);
-    if (!a || !b) continue;
+    const a = m.fromId === "you" || m.fromId === "hq" ? { x: L.ceo.x + L.ceo.w / 2, y: L.ceo.y + 70 } : seatOf(m.fromId);
+    if (!a) continue;
+    // A channel post flies to everyone in the channel.
+    const targets = isChannel(m.toId) ? channelMembers(f.snap.config, m.toId).filter((id) => id !== m.fromId) : [m.toId];
+    for (const to of targets.slice(0, 12)) {
+      const b = seatOf(to);
+      if (b) plane(g, a, b, age);
+    }
+  }
+}
+
+function plane(g: CanvasRenderingContext2D, a: { x: number; y: number }, b: { x: number; y: number }, age: number) {
+  {
     const p = Math.min(1, age / 1.6);
     const mx = (a.x + b.x) / 2;
     const my = Math.min(a.y, b.y) - 90;

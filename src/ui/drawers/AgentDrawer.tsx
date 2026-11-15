@@ -1,4 +1,5 @@
 import { ModelBanner, UsageSection } from "./UsageBits";
+import { channelsFor, isChannel } from "../../data/messaging";
 import { describePick } from "../../data/models";
 import { useEffect, useState, type ReactNode } from "react";
 import { CLI_LABEL, HUMAN_ID, type AccessRequest, type AgentConfig, type AgentStatus, type OfficeSnapshot } from "../../data/types";
@@ -442,7 +443,9 @@ function SandboxTab({ snap, agent }: { snap: OfficeSnapshot; agent: AgentConfig 
 function MessagesTab({ snap, agent }: { snap: OfficeSnapshot; agent: AgentConfig }) {
   const now = useNow(1000);
   const [draft, setDraft] = useState("");
-  const list = snap.messages.filter((m) => m.fromId === agent.id || m.toId === agent.id);
+  // Direct messages, and posts in the channels the agent is in.
+  const mine = new Set(channelsFor(snap.config, agent.id).map((c) => c.id));
+  const list = snap.messages.filter((m) => m.fromId === agent.id || m.toId === agent.id || mine.has(m.toId));
   const who = (id: string) =>
     id === HUMAN_ID ? { name: "You", color: "#ffec27" } : id === "hq" ? { name: "HQ", color: "#3ee0d0" } : snap.config.team.find((a) => a.id === id);
   const running = snap.agents.find((a) => a.agentId === agent.id)?.session.state === "running";
@@ -460,12 +463,13 @@ function MessagesTab({ snap, agent }: { snap: OfficeSnapshot; agent: AgentConfig
         <ul className="flex flex-col gap-2">
           {list.map((m) => {
             const out = m.fromId === agent.id;
+            const channel = isChannel(m.toId) ? m.toId : null;
             const other = who(out ? m.toId : m.fromId);
             return (
               <li key={m.id} className={`border-2 border-ink px-2.5 py-1.5 ${out ? "ml-8 bg-white" : "mr-8 bg-cream-2"}`}>
                 <div className="flex items-center gap-1.5 text-[13px] text-muted">
                   {other && <Dot color={other.color} size={8} />}
-                  {out ? `To ${other?.name ?? "?"}` : `From ${other?.name ?? "?"}`}
+                  {channel ? (out ? `Posted to ${channel}` : `${other?.name ?? "?"} in ${channel}`) : out ? `To ${other?.name ?? "?"}` : `From ${other?.name ?? "?"}`}
                   <span className="ml-auto font-term text-[15px]">{ago(m.at, now)}</span>
                 </div>
                 <div className="text-[15px]">{m.text}</div>

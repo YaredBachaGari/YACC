@@ -1,3 +1,4 @@
+import { ChannelsDrawer } from "./ChannelsDrawer";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { DRAWER_DEFAULT, ui, useUi } from "../../store/ui";
@@ -126,6 +127,7 @@ export function DrawerHost() {
           {drawer.kind === "prs" && <PrDrawer />}
           {drawer.kind === "actions" && <ActionItemsDrawer />}
           {drawer.kind === "briefings" && <BriefingsDrawer />}
+          {drawer.kind === "channels" && <ChannelsDrawer channel={drawer.channel} />}
           {drawer.kind === "env" && <EnvironmentDrawer name={drawer.name} />}
           {drawer.kind === "terminal" && <TerminalDrawer />}
         </motion.aside>

@@ -1,6 +1,7 @@
 // In-memory state for the mock source. Every mutation goes through a helper
 // that emits the matching OfficeEvent, so the store stays in sync.
 
+import { channelMembers, isChannel } from "../messaging";
 import type { OfficeEvent, SimSpeed } from "../source";
 import type {
   ActivityType,
@@ -241,6 +242,7 @@ export class World {
 
   name(id: string | null): string {
     if (id === "you") return "You";
+    if (id === "hq") return "HQ";
     return (id && this.cfg(id)?.name) || "Someone";
   }
 
@@ -365,9 +367,11 @@ export class World {
     const msg = { id: this.id("m"), at: now(), fromId, toId, text };
     this.snap.messages = [msg, ...this.snap.messages].slice(0, 100);
     this.emit({ type: "message", message: msg });
-    this.activity("message", fromId === "you" ? null : fromId, `${this.name(fromId)} → ${this.name(toId)}: ${text}`);
-    if (fromId !== "you") this.write(fromId, messageLines(this.name(fromId), this.name(toId), text, false));
-    this.write(toId, messageLines(this.name(fromId), this.name(toId), text, true));
+    const channel = isChannel(toId);
+    const to = channel ? channelMembers(this.snap.config, toId).filter((id) => id !== fromId) : [toId];
+    this.activity("message", fromId === "you" ? null : fromId, `${this.name(fromId)} → ${channel ? `${toId} (${to.length})` : this.name(toId)}: ${text}`);
+    if (fromId !== "you") this.write(fromId, messageLines(this.name(fromId), channel ? toId : this.name(toId), text, false));
+    for (const id of to) this.write(id, messageLines(this.name(fromId), channel ? toId : this.name(id), channel ? `[${toId}] ${text}` : text, true));
   }
 
   // ------------------------------------------------------------ terminal

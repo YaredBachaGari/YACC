@@ -41,6 +41,18 @@ Agents talk to each other and to HQ through an MCP server called `hq`, which HQ 
 - A message is delivered right away if the agent is idle, or when it finishes its current step if it's busy.
 - You can message any agent from the **Messages** tab in its drawer.
 
+**Channels.** Every team has `#team`, which reaches everyone, and a channel per role with agents in it (`#writer`, `#developer`…), which reaches everyone with that role. Agents post with `send_message` to `#team` or `#<role id>`; you post from **Channels** in the top bar, where you can also read everything posted. In the office a post flies to every desk in the channel.
+
+**Who may message whom.** Open by default. In **Settings → Org chart → Messages** you can limit direct messages to reporting lines: an agent can message its manager, the people who report to it, the people who share its manager, and the lead (who reaches everyone). Add role pairs that may also talk (say, researchers to writers), and choose whether everyone or only the lead posts to `#team`. Role channels are open to their members and the lead. You and HQ are never limited, and any agent can always ask you with `ask_user`. A refused message tells the agent who to ask instead.
+
+```yaml
+messaging:
+  direct: lines          # or anyone (the default)
+  team: lead             # who posts to #team: everyone (the default) or lead
+  allow:
+    - { from: researcher, to: writer }
+```
+
 ## GitHub and reviews
 
 HQ reads your PRs, checks and review comments with your `gh` login, about every 20 seconds.
@@ -85,9 +97,27 @@ Each agent in Sandbox mode runs in its own [Docker Sandbox](https://docs.docker.
 
 Mark a request **Done** (with an optional note) or **Dismiss** it, and HQ tells the agent so it can continue. Action items stay on your machine and are never committed.
 
+## Toolkits and the team's own skills
+
+**Toolkits** give roles what they need for a kind of work. Each one installs agent skills (and sometimes an MCP server) into the agents' folders: **Office documents** (Word, PDF, PowerPoint, Excel), **Writing together**, **Web research** (Perplexity), **Visual design**, **Frontend design**, **Web app testing** and **Making tools** (new skills and MCP servers). Turn them on in **Settings → Toolkits** and give each to every role or just the roles you pick; **Who gets what** shows the result per role. The skills come from Anthropic's public skills repository (`anthropics/skills`) through the skills CLI, fetched once and cached per set of skills.
+
+**The team's own skills** are instructions for how your team does a kind of work: a house style, a checklist, a method. Each is a folder in `.yacc/skills/<name>/` with a `SKILL.md` (a name and a "use when…" description at the top, then the instructions), committed with the project. Write one in Settings → Toolkits or by hand, then pick the roles that get it. A team skill wins over a registry skill with the same name.
+
+An agent gets its role's toolkits and skills when it starts, copied into `.claude/skills/` (Claude Code) and `.agents/skills/` (Codex), kept out of git, and its role file lists them under "Your tools". Skills HQ put there that the role no longer gets are removed; skills the repo commits, or that you put there yourself, are never touched. If the skills can't be fetched, the agent starts anyway with what it had.
+
+```yaml
+toolkits:
+  - documents                              # every role
+  - { id: web-research, roles: [researcher] }
+skills:
+  - { name: house-style, roles: [writer, editor] }
+```
+
+Templates bring toolkits and skills: Content Studio gives writers and editors Office documents and a `house-style` skill, and researchers a `source-notes` skill. A template you save keeps its toolkits, its skills (folders and all) and each role's MCP servers.
+
 ## Your stack
 
-Optional. In Settings → Stack (or during the welcome), pick what the project uses: frameworks, plus tools for auth, payments, database, analytics and security. You can also add your own under "Other".
+Optional, for software projects. In Settings → Toolkits → Coding stack (or during the welcome), pick what the project uses: frameworks, plus tools for auth, payments, database, analytics and security. You can also add your own under "Other". The stack's skills go to every role.
 
 - Agents see the stack in their instructions.
 - Each tool's official agent skills are installed into the agents' folders (`.claude/skills`, `.agents/skills`), kept out of git.
@@ -127,6 +157,9 @@ HQ never stores key values and never reads your env files.
 | Agents, roles, CLI, mode | Settings → Team | Next time the agent starts |
 | Who reports to whom | Settings → Org chart | Right away |
 | Stages, who does them, gates, "done when" | Settings → Workflow | When you press Save stages; agents read the new flow the next time they start |
+| Toolkits and team skills, per role | Settings → Toolkits | Next time each agent starts (a toolkit's MCP server: right away in running sandboxes) |
+| Channels and who may message whom | Settings → Org chart → Messages | Right away; agents read the rules the next time they start |
+| Schedules | Settings → Schedules | Right away |
 | CPU and memory | Settings → Sandbox | After **Recreate sandbox** |
 | MCP servers per agent | Settings → MCP | Right away for new servers |
 
@@ -134,12 +167,13 @@ HQ never stores key values and never reads your env files.
 
 | File | What | Commit it? |
 | --- | --- | --- |
-| `.yacc/config.yml` (in your repo) | CEO, headcount limit, roles, team, workflow, stack, office name and theme, profiles | Yes, so your team shares it |
+| `.yacc/config.yml` (in your repo) | CEO, headcount limit, roles, team, workflow, stack, toolkits, messaging rules, schedules, office name and theme, profiles | Yes, so your team shares it |
+| `.yacc/skills/<name>/` (in your repo) | The team's own skills | Yes |
 | `.yacc/avatars/` (in your repo) | Pictures uploaded for agents and you (small PNGs) | Yes, so teammates see the same faces |
 | `.yacc/roles/<role>.md` (in your repo) | Each role's instructions | Yes |
 | `.yacc/plan.json` (in your repo) | Boards and tasks | Yes |
 | `docs/plan.md` (in your repo) | A readable copy of the plan, if **Settings → Project → Export plan** is on | Yes |
-| `~/.yacc/<project>/` | Agents' folders, app variables, action items and HQ's own records | No, it's outside your repo, on your machine only |
+| `~/.yacc/<project>/` | Agents' folders, app variables, action items, the skills cache, when each schedule last ran, and HQ's own records | No, it's outside your repo, on your machine only |
 
 **Remove a project:** delete each agent in Settings → Team (this removes its sandbox and, if you choose, its folder), then delete `~/.yacc/<project>`.
 
@@ -346,3 +380,19 @@ A **template** is a whole setup for one purpose: the roles (and their instructio
 **Save your own** in Settings → Project: on this machine (`~/.yacc/templates/<name>/`, offered for every new project) or in this project (`.yacc/templates/<name>/`, commit it to share). A template folder is `template.yml` plus `roles/<id>.md` and `brief.md`; you can write one by hand. Temporary hires, secrets, sandboxes and tasks are never saved.
 
 The **role library** is a set of ready-made roles: Developer, QA, Designer, Technical writer, Researcher, Writer, Editor, Fact checker, Analyst, Experimenter and Marketer. Add them in Settings → Roles. The lead can see them with `list_roles` and hire into one by its title, with no instructions to write. Library roles can take tasks, and some can review; none can plan, hire or approve.
+
+## Schedules
+
+Work that starts on its own: a weekly report, a daily content run, a follow-up whenever a piece is done. Add them in **Settings → Schedules**.
+
+- **When:** on a clock (every hour, day, weekday, week or month, at a time on this computer), or when something happens: a task is done, a board is done, or a pull request is merged.
+- **What:** send a message (to the lead, an agent, or a channel), or add a task (for a named agent, for someone with a role, or for the lead to assign). Messages start with `[Schedule: <name>]`. In the text, `{date}` is filled in, and for events `{task}`, `{title}`, `{board}` and `{pr}`.
+- **Run now** runs one at once, whatever its time; Activity shows what each run did, and the list shows the next and last run.
+- A new schedule never fires for a time already past. A time missed while HQ was closed runs once when HQ is back, not once per missed time. The lead's role file lists the schedules that are on, so it knows what arrives by itself.
+- Templates bring schedules switched off (Content Studio: a daily content run and a weekly roundup), so nothing spends tokens until you turn it on.
+
+```yaml
+schedules:
+  - { name: Weekly report, every: week, day: 5, at: "16:00", action: message, to: lead, text: "Send me a report_to_ceo briefing for the week." }
+  - { name: Promote, on: task-done, action: task, title: "Social posts for {title}", to: "role:marketer", text: "Three posts for {title}." }
+```

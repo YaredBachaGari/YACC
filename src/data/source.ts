@@ -1,4 +1,6 @@
 import type { ProjectSkillChoice, ProjectSkillInfo, ToolkitChoice } from "./toolkits";
+import type { MessagingConfig } from "./messaging";
+import type { Schedule, ScheduleStatus } from "./schedules";
 import type { StackConfig } from "./stack";
 import type {
   AccessDecision,
@@ -62,7 +64,8 @@ export type OfficeEvent =
   | { type: "shared.updated"; files: SharedFile[] }
   | { type: "memory.updated"; memory: ProjectMemory }
   | { type: "usage.updated"; usage: UsageView }
-  | { type: "skills.updated"; skills: ProjectSkillInfo[] };
+  | { type: "skills.updated"; skills: ProjectSkillInfo[] }
+  | { type: "schedules.updated"; schedules: ScheduleStatus[] };
 
 export type SimSpeed = 1 | 2 | 4;
 
@@ -88,7 +91,7 @@ export interface OfficeDataSource {
   sendTerminalInput(agentId: string, data: string): void;
   resizeTerminal(agentId: string, cols: number, rows: number): void;
   assignTask(taskId: string, agentId: string): void;
-  /** You → an agent, delivered like any Team MCP message. */
+  /** You → an agent, or a post to a channel (#team, #<role id>), delivered like any Team MCP message. */
   sendMessage(toId: string, text: string): void;
 
   // agent sessions
@@ -156,6 +159,12 @@ export interface OfficeDataSource {
   removeRole(id: string): void;
   /** The CEO's name and the headcount limit. */
   updateOrg(patch: OrgPatch): void;
+  /** Channels and who may message whom. */
+  updateMessaging(messaging: MessagingConfig): void;
+  /** The team's schedules, saved whole. */
+  updateSchedules(schedules: Schedule[]): void;
+  /** Runs a schedule now, whatever its time. */
+  runSchedule(id: string): void;
   /** Which toolkits the team uses, each for every role or the roles listed. */
   updateToolkits(list: ToolkitChoice[]): void;
   /** Which roles get each of the team's own skills. */

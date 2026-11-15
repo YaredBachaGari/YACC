@@ -28,6 +28,9 @@ import { AvatarError, removeAvatar, saveAvatar } from "./avatars";
 import { listProjectSkills, readProjectSkill, removeProjectSkill, SkillError, skillsDir, writeProjectSkill } from "./projectSkills";
 import { cleanProjectSkills, cleanToolkits, teamSkillSets } from "../src/data/toolkits";
 import { mcpFor } from "../src/data/models";
+import { cleanMessaging } from "../src/data/messaging";
+import { cleanSchedules } from "../src/data/schedules";
+import type { Scheduler } from "./scheduler";
 import { cleanAvatar, cleanBio, cleanTheme } from "../src/data/profile";
 import type { AvatarConfig } from "../src/data/types";
 
@@ -67,7 +70,7 @@ const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(
 const str = (v: unknown, max = 2000) => (typeof v === "string" ? v.slice(0, max) : "");
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
 
-export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx: Sbx, mcp: SbxMcp, teamOps: Team, extra: { briefings: Briefings; memory: Memory; budgets?: Budgets }) {
+export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx: Sbx, mcp: SbxMcp, teamOps: Team, extra: { briefings: Briefings; memory: Memory; budgets?: Budgets; scheduler?: Scheduler }) {
   /** Runs an sbx change and reports failures in the activity feed. */
   const attempt = async (agentId: string | null, what: string, fn: () => Promise<void>) => {
     try {
@@ -407,6 +410,27 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx
       }
     },
 
+    /** The team's schedules, saved whole (plan 6.5). New ones count from now; the lead learns of them on its next start. */
+    updateSchedules: (raw) => {
+      const cfg = hub.snap.config;
+      const list = cleanSchedules(raw);
+      if (list.length) cfg.schedules = list;
+      else delete cfg.schedules;
+      hub.configChanged();
+      extra.scheduler?.sync();
+    },
+
+    runSchedule: (id) => void extra.scheduler?.runNow(str(id, 80)),
+
+    /** Channels and who may message whom. Agents are told on their next start; the rules apply right away. */
+    updateMessaging: (raw) => {
+      const cfg = hub.snap.config;
+      const m = cleanMessaging(raw, cfg.roles.map((r) => r.id));
+      if (m) cfg.messaging = m;
+      else delete cfg.messaging;
+      hub.configChanged();
+    },
+
     /** Which roles get each of the team's own skills (.yacc/skills/). */
     updateProjectSkills: (raw) => {
       const cfg = hub.snap.config;
@@ -534,11 +558,14 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx
       const own = cleanProjectSkills((tpl.skills ?? []).map((sk) => ({ name: sk.name, roles: sk.roles })), roleIds);
       if (own.length) cfg.skills = own;
       hub.snap.projectSkills = listProjectSkills(hub.repo.root);
+      const schedules = cleanSchedules(tpl.schedules ?? []);
+      if (schedules.length) cfg.schedules = schedules;
       hub.snap.agents = cfg.team.map((a) => Hub.freshStatus(a.id));
       hub.snap.welcome = false;
       hub.configChanged(); // saves .yacc/config.yml for the first time
       hub.planChanged();
       prefetchSkills(true); // retried on Start
+      extra.scheduler?.start();
       await sessions.recheckSetup();
       await sbx.refresh();
       hub.emit({ type: "snapshot", snapshot: structuredClone(hub.snap) });
