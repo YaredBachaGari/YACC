@@ -155,9 +155,27 @@ Each agent runs on one model, in the program made for it:
 - **DeepSeek in a sandbox** uses Docker Sandboxes' model selection, which sbx still marks experimental. The setup step turns it on and adds a `deepseek` provider (`https://api.deepseek.com/anthropic/v1`, Anthropic format), keeping any providers you already have. In Local mode, Claude Code talks to `https://api.deepseek.com/anthropic` directly, as DeepSeek documents.
 - **Gemini** gets its role as a context file next to the project's own `GEMINI.md`, the team's MCP server, and hooks so the office shows when it works and finishes. The first time it starts, Gemini CLI may ask you to trust the folder and allow YACC's hooks: allow both. YACC writes these into `.gemini/settings.json` in the agent's own copy (git-excluded); a repo that commits that file can't run Gemini agents.
 
+### Usage and budgets
+
+Claude Code, Codex and Gemini CLI report how many tokens they use, over OpenTelemetry, to YACC on your machine (Claude Code and Gemini as metrics, Codex as log events; never your prompts). YACC writes these settings into each agent's own folder, next to its hooks. If your project already sends Claude Code's or Gemini's telemetry somewhere (its committed settings set an OTLP exporter), YACC leaves that alone and that agent's usage isn't counted.
+
+- **Where you see it:** today's cost on each agent's card; today, this week and this month in the agent's Task tab; the whole team in **Settings → Models → Usage and budgets**.
+- **Cost:** Claude Code reports its own cost, which YACC uses for Claude models. For everything else (DeepSeek, Gemini, OpenAI) YACC estimates from a table of API prices, shown with ≈. Your own prices go in `config.yml` under `prices:`. On a subscription, cost is what the same work would cost on the API, not what you pay.
+- **Kept on this machine** in `~/.yacc/<project>/usage.json` (the last two months), never in the repo.
+
+**Budgets** are a dollar amount a day, week or month (local time, weeks from Monday), for the whole team and for any agent, set in the same table or in `config.yml`. At 80% Activity warns you once. At 100% YACC **pauses** the agent (or, for the team budget, everyone): it stops handing it new messages and tasks (a turn already running finishes) and opens an action item. **Keep going** lets it continue for the rest of the period; **Stay paused** leaves it until the period ends or you raise the budget.
+
+### Routing and fallback
+
+**Routing rules** send each kind of work to a model: `research → Gemini (pro)`, `review → Claude (opus)`. The lead is told the kinds and sets one on each task it creates (`create_task kind`). When an agent starts a task of that kind, YACC restarts it on that model, keeping its folder, its sandbox (same program) and its task; a task without a rule puts it back on its own model. A busy agent keeps its model, and a model that isn't set up yet is skipped (Activity says so).
+
+**Fallback** is the order of models to switch to when one stops at its **usage limit** (or a billing problem). YACC knows from Claude Code's `StopFailure` hook (Claude Code 2.1.78 or later) and from each program's own limit message on screen ("Claude usage limit reached…", "You've hit your usage limit…", "exhausted your daily quota…"). It then moves the agent to the first fallback from another provider that isn't at a limit and is set up, and tells it to carry on with its task (its earlier conversation is gone, so it checks its notes and git status). It stays on the fallback until you choose **Use own model** in its drawer. With no fallback that can run, you get an action item ("Try again" tells the agent to continue).
+
+Switching to another program (say Claude Code to Codex) recreates the agent's sandbox, since a sandbox is made for one program; the agent's folder is on your machine, so its work stays. The setup checklist includes the models routing and fallback can switch to.
+
 ### The adapter contract
 
-A program can join the team when YACC can: give it the role (instructions), connect it to the team's MCP server over HTTP, hear when a turn starts and stops (hooks, and at the end of a turn take `{"decision":"block","reason":…}` to carry on with new messages), and launch it in a Docker Sandbox and on your machine. `server/adapters.ts` has one adapter per model; the catalog of providers, sign-in modes and model names is `src/data/models.ts`.
+A program can join the team when YACC can: give it the role (instructions), connect it to the team's MCP server over HTTP, hear when a turn starts and stops (hooks, and at the end of a turn take `{"decision":"block","reason":…}` to carry on with new messages), and launch it in a Docker Sandbox and on your machine. If it can report its token use over OpenTelemetry (OTLP/HTTP, JSON or protobuf, to `/otlp/<agent>/<token>/v1/metrics` or `/v1/logs`), YACC counts it. `server/adapters.ts` has one adapter per model; the catalog of providers, sign-in modes and model names is `src/data/models.ts`.
 
 ### Research with Perplexity
 
@@ -230,7 +248,17 @@ team:
 providers:                                   # how YACC signs in; keys never go here
   anthropic: { auth: subscription }
   google: { auth: api-key }
+routing:
+  rules:                                     # tasks of this kind run on this model
+    - { kind: research, cli: gemini, model: pro }
+  fallback:                                  # in order, when a model hits its usage limit
+    - { cli: codex }
+    - { cli: deepseek }
+prices:                                      # optional: your own API prices per million tokens
+  my-model: { input: 1, output: 4 }
 ```
+
+Budgets: `limits: { maxAgents: 5, budget: { usd: 50, period: month } }` for the team, `budget: { usd: 5, period: day }` on an agent.
 
 `cli` is the agent's model: `claude`, `codex`, `gemini` or `deepseek`. A role's `cli` and `model` are the defaults for new agents with that role, hires included; its `tools` are MCP servers every agent with the role gets. `providers` takes `subscription` or `api-key` for `anthropic`, `openai` and `google`; DeepSeek and Perplexity are API key only.
 

@@ -287,7 +287,8 @@ function seat(g: CanvasRenderingContext2D, cx: number, deskY: number, deskW: num
   const st = s?.status;
   const session = st?.session.state ?? "stopped";
   const present = !!s && (session === "running" || session === "starting");
-  const state: AgentState = st?.state ?? "idle";
+  // Paused by a budget, or stopped at a usage limit with no fallback: it waits on you.
+  const state: AgentState = st && (st.held || (st.limited && !st.using)) ? "needs-input" : (st?.state ?? "idle");
   const seed = s ? lookFor(s.agent.id).style + s.agent.id.length : 0;
   chair(g, cx, deskY - 6, opts.lead ? "#4a3f5c" : "#3d3a48", !present);
   if (s && present) {

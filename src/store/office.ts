@@ -124,6 +124,8 @@ function reduce(snap: OfficeSnapshot, e: OfficeEvent): OfficeSnapshot {
       return { ...snap, sharedFiles: e.files };
     case "memory.updated":
       return { ...snap, memory: e.memory };
+    case "usage.updated":
+      return { ...snap, usage: e.usage };
   }
 }
 
@@ -198,6 +200,8 @@ export const officeActions = {
   addRole: source.addRole.bind(source),
   updateRole: source.updateRole.bind(source),
   setProviderAuth: source.setProviderAuth.bind(source),
+  setRouting: source.setRouting.bind(source),
+  useOwnModel: source.useOwnModel.bind(source),
   removeRole: source.removeRole.bind(source),
   updateOrg: source.updateOrg.bind(source),
   updateWorkflow: source.updateWorkflow.bind(source),

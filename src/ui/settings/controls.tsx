@@ -12,6 +12,8 @@ interface Props {
   multiline?: boolean;
   type?: string;
   maxLength?: number;
+  "aria-label"?: string;
+  inputMode?: "text" | "decimal" | "numeric";
 }
 
 export function CommitInput({ value, onCommit, multiline, ...rest }: Props) {

@@ -9,7 +9,7 @@ import { stackRoleMd } from "../src/data/stack";
 import { CEO_ID, type AgentConfig, type HqConfig } from "../src/data/types";
 import { can, managerName, roleOf, toolsFor } from "../src/data/roles";
 import { describeFlow } from "../src/data/workflow";
-import { PERPLEXITY_MCP, mcpFor } from "../src/data/models";
+import { PERPLEXITY_MCP, describePick, mcpFor } from "../src/data/models";
 
 /** Team MCP config, passed with `claude --mcp-config` (so the project's own .mcp.json is untouched). */
 export const MCP_CONFIG = ".claude/hq-mcp.json";
@@ -130,6 +130,11 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
       "If the user changes who merges, HQ tells you. Follow the latest message.",
     );
   if (can(cfg, agent, "assign")) rules.push("Assign only to agents that are running and free (check list_workers).");
+  // Routing rules: the kind on a task picks the model its assignee runs on.
+  if (can(cfg, agent, "plan") && cfg.routing?.rules?.length)
+    rules.push(
+      `Set a kind on each task (create_task kind) when one fits: ${cfg.routing.rules.map((r) => `${r.kind} → ${describePick(r)}`).join(", ")}. When an agent starts a task of that kind, HQ switches it to that model. Other tasks run on the agent's own model.`,
+    );
   // How tasks arrive and are reported is the same for every role; a role that already spells it out isn't told twice.
   if (can(cfg, agent, "work") && !/get_my_task/.test(role?.instructions ?? ""))
     rules.push(
@@ -196,7 +201,42 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
 }
 
 type HookEntry = { matcher?: string; hooks: { type: "command"; command: string; timeout?: number }[] };
-type Settings = { hooks?: Record<string, HookEntry[]>; permissions?: { allow?: string[]; [k: string]: unknown }; [k: string]: unknown };
+type Settings = { hooks?: Record<string, HookEntry[]>; permissions?: { allow?: string[]; [k: string]: unknown }; env?: Record<string, string>; [k: string]: unknown };
+
+/** Where an agent program reports its token use (OTLP over HTTP). The path carries the agent and its token. */
+export const usageUrl = (agent: AgentConfig, port: number, token: string) => `${hqUrl(agent, port)}/otlp/${encodeURIComponent(agent.id)}/${token}`;
+
+/** Claude Code's OpenTelemetry settings that send its token counts and cost to HQ (metrics only, no prompts). */
+export function claudeTelemetryEnv(agent: AgentConfig, port: number, token: string): Record<string, string> {
+  return {
+    CLAUDE_CODE_ENABLE_TELEMETRY: "1",
+    OTEL_METRICS_EXPORTER: "otlp",
+    OTEL_EXPORTER_OTLP_METRICS_PROTOCOL: "http/json",
+    OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: `${usageUrl(agent, port, token)}/v1/metrics`,
+    OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE: "delta",
+    OTEL_METRIC_EXPORT_INTERVAL: "15000",
+  };
+}
+
+/**
+ * Whether the project already sends Claude Code's telemetry somewhere (its committed settings set an
+ * OTLP exporter). Then HQ leaves it alone, and this agent's usage isn't counted.
+ */
+export function projectHasOwnTelemetry(dir: string): boolean {
+  try {
+    const own = JSON.parse(agentRead(dir, ".claude/settings.json") ?? "{}") as Settings;
+    return !!(own.env && Object.keys(own.env).some((k) => /^OTEL_(METRICS_EXPORTER|EXPORTER_OTLP)/.test(k)));
+  } catch {
+    return false;
+  }
+}
+
+export interface ClaudeOptions {
+  /** Claude Code 2.1.78 or later: StopFailure tells HQ a turn ended on an API error (a usage limit). */
+  stopFailure?: boolean;
+  /** Report token use to HQ (left out when the project has its own telemetry). */
+  telemetry?: boolean;
+}
 
 export function hookCommand(url: string, token: string, agentId: string, event: string, script: string | null = null): string {
   if (script) return `node "${script}" ${url}/hook/${agentId}/${event} ${token}${event === "Stop" ? " --print-reply" : ""} ${MARK_ARG}`;
@@ -209,7 +249,7 @@ export function hookCommand(url: string, token: string, agentId: string, event: 
  * Hooks report state to HQ. SessionStart also prints ROLE.md, which Claude Code
  * adds to the session's context. Existing user hooks are kept.
  */
-export function writeSettings(dir: string, agent: AgentConfig, port: number, token: string) {
+export function writeSettings(dir: string, agent: AgentConfig, port: number, token: string, opts: ClaudeOptions = {}) {
   const script = hookScriptFor(agent, dir);
   const file = ".claude/settings.local.json";
   let settings: Settings = {};
@@ -223,7 +263,13 @@ export function writeSettings(dir: string, agent: AgentConfig, port: number, tok
   }
   const hooks: Record<string, HookEntry[]> = { ...(settings.hooks ?? {}) };
   const url = hqUrl(agent, port);
-  for (const event of HOOK_EVENTS) {
+  // StopFailure only where Claude Code knows it; an older version may reject the whole file for an unknown event.
+  const events: readonly string[] = opts.stopFailure ? [...HOOK_EVENTS, "StopFailure"] : HOOK_EVENTS;
+  if (!opts.stopFailure && hooks.StopFailure) {
+    hooks.StopFailure = hooks.StopFailure.map((e) => ({ ...e, hooks: e.hooks.filter((h) => !isOurs(h.command)) })).filter((e) => e.hooks.length);
+    if (!hooks.StopFailure.length) delete hooks.StopFailure;
+  }
+  for (const event of events) {
     const kept = (hooks[event] ?? [])
       .map((e) => ({ ...e, hooks: e.hooks.filter((h) => !isOurs(h.command)) }))
       .filter((e) => e.hooks.length);
@@ -235,11 +281,18 @@ export function writeSettings(dir: string, agent: AgentConfig, port: number, tok
   // Let the agent use the Team MCP without a permission prompt for every call.
   // Perplexity (a role tool) is read-only research, so it needs no prompt either.
   const allow = new Set([...(settings.permissions?.allow ?? []), "mcp__hq", "mcp__perplexity"]);
-  agentWrite(dir, file, JSON.stringify({ ...settings, hooks, permissions: { ...(settings.permissions ?? {}), allow: [...allow] } }, null, 2) + "\n");
+  // Usage reporting: HQ's OpenTelemetry variables, or none of them (an endpoint that isn't HQ's is the user's).
+  const ours = claudeTelemetryEnv(agent, port, token);
+  const env: Record<string, string> = Object.fromEntries(Object.entries(settings.env ?? {}).filter(([k, v]) => !(k in ours) || (k === "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT" && !String(v).includes("/otlp/"))));
+  if (opts.telemetry) Object.assign(env, ours);
+  const next: Settings = { ...settings, hooks, permissions: { ...(settings.permissions ?? {}), allow: [...allow] } };
+  if (Object.keys(env).length) next.env = env;
+  else delete next.env;
+  agentWrite(dir, file, JSON.stringify(next, null, 2) + "\n");
 }
 
 /** Extra MCP servers HQ writes for a Local-mode agent (in a sandbox, sbx's gateway provides them). */
-export interface LocalTools {
+export interface LocalTools extends ClaudeOptions {
   /** Perplexity with its key from the session's environment (Claude Code expands ${VAR} here). */
   perplexity?: boolean;
 }
@@ -258,7 +311,7 @@ export function writeMcpConfig(dir: string, agent: AgentConfig, port: number, to
 /** Claude Code's files: the role (loaded by the SessionStart hook), hooks, and the Team MCP config. */
 export function writeClaudeFiles(dir: string, agent: AgentConfig, cfg: HqConfig, token: string, extras: RoleExtras = {}, tools: LocalTools = {}) {
   agentWrite(dir, ROLE_FILE, roleMd(agent, cfg, extras));
-  writeSettings(dir, agent, cfg.project.hqPort, token);
+  writeSettings(dir, agent, cfg.project.hqPort, token, tools);
   writeMcpConfig(dir, agent, cfg.project.hqPort, token, tools);
   if (hookScriptFor(agent, dir)) writeHookScript(dir);
   excludeFromGit(dir, HQ_FILES);

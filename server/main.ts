@@ -29,6 +29,8 @@ import { Briefings } from "./briefings";
 import { Memory } from "./memory";
 import { SharedFiles } from "./shared";
 import { listTemplates } from "./templates";
+import { Budgets, Usage } from "./usage";
+import { hookCallbacks } from "./hooks";
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -100,9 +102,37 @@ async function main() {
     },
     recheckSetup: () => sessions.recheckSetup(),
   });
-  // A hire or dismissal the CEO approved (or declined) in Action items.
+  // Usage (what agent programs report) and budgets: an agent or the team over budget is held until you decide.
+  const usage = new Usage(hub);
+  const actions = planner.actions;
+  const openOf = (kind: "budget" | "limit", key: string) => (hub.snap.actionItems ?? []).find((i) => i.kind === kind && i.status === "open" && i.payload?.target === key);
+  const budgets = new Budgets(hub, usage, {
+    openItem: (target, fromId, title, details) => actions.addDecision("budget", fromId, title, details, { target }),
+    hasOpenItem: (target) => !!openOf("budget", target),
+    release: (id) => void inbox.tryType(id),
+  });
+  usage.onChange = () => budgets.check();
+  budgets.check();
+  const budgetTimer = setInterval(() => budgets.check(), 60_000); // a new day, week or month releases holds
+  inbox.held = (id) => budgets.holdReason(id) ?? (sessions.isSwitching(id) ? "Switching models" : null);
+  // Routing: a task's kind can switch its assignee's model. Limits: a fallback takes over, or you decide.
+  planner.onAssign = (id, task) => sessions.applyRouting(id, task);
+  hookCallbacks.onApiFailure = (id, error, message) => void sessions.onApiFailure(id, error, message);
+  sessions.notify = (id, text) => planner.notify(id, text);
+  sessions.onStuckAtLimit = (id, title, details) => {
+    if (!openOf("limit", id)) actions.addDecision("limit", id, title, details, { target: id });
+  };
+
+  // A hire or dismissal the CEO approved (or declined) in Action items; a budget or limit decision.
   planner.actions.onDecision = async (item, decision, note) => {
     const p = item.payload ?? {};
+    if (item.kind === "budget") return budgets.decide(String(p.target ?? ""), decision);
+    if (item.kind === "limit") {
+      const id = String(p.target ?? item.fromId);
+      if (decision !== "done") return;
+      hub.setStatus(id, { limited: null });
+      return planner.notify(id, `The CEO asked you to try again: continue your current task.${note ? ` Their note: ${note}` : ""}`);
+    }
     if (decision === "dismissed") return planner.notify(item.fromId, `The CEO declined: ${item.title}.${note ? ` Their note: ${note}` : ""}`);
     const result = item.kind === "hire" ? team.hire(item.fromId, p.input as Parameters<Team["hire"]>[1], true) : await team.dismiss(item.fromId, String(p.agent), String(p.reason ?? ""), true);
     planner.notify(item.fromId, `The CEO approved: ${item.title}. ${result}${note ? ` Their note: ${note}` : ""}`);
@@ -125,7 +155,8 @@ async function main() {
     agentToken: token,
     distDir: dev ? null : distDir,
     allowedOrigins: [uiOrigin, `http://127.0.0.1:${uiPort}`, `http://localhost:${port}`, `http://127.0.0.1:${port}`],
-    commands: makeCommands(hub, sessions, planner, sbx, mcp, team, { briefings, memory }),
+    commands: makeCommands(hub, sessions, planner, sbx, mcp, team, { briefings, memory, budgets }),
+    usage,
   });
   // Settings edited by hand in .yacc/config.yml (or roles/*.md) are picked up while HQ runs.
   const stopWatching = watchConfig(repo.root, (result) => {
@@ -152,6 +183,8 @@ async function main() {
   const quit = () => {
     log.info(sessions.backend.persistent ? "stopping HQ — agent sessions keep running in tmux" : "stopping HQ and its agents — sandboxes and folders are kept");
     sessions.shutdown();
+    clearInterval(budgetTimer);
+    usage.flush();
     stopWatching();
     sbx.stopApprovalPolling();
     github.stop();

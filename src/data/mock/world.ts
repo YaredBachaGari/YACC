@@ -13,8 +13,7 @@ import type {
   Environment,
   OfficeSnapshot,
   PullRequest,
-  Task,
-} from "../types";
+  Task, UsageLine, UsageView } from "../types";
 import { mulberry32 } from "../../lib/random";
 import { completeConfig, type Preset } from "./presets";
 import { normalizeConfig } from "../roles";
@@ -82,6 +81,28 @@ export function mockSession(project: string, agentId: string): SessionInfo {
   return { state: "running", detail: null, workspace: `~/.yacc/${slug(project)}/${agentId}`, sandbox: { cpus: 8, memoryGb: 8 } };
 }
 
+/** Demo usage: a plausible day, week and month per agent (real HQ gets these from the agents' programs). */
+function demoUsage(team: { id: string; cli: string; model: string }[]): UsageView {
+  const line = (input: number, output: number, costUsd: number, estimated: boolean): UsageLine => ({ input, output, cacheRead: input * 3, cacheWrite: Math.round(input / 5), costUsd, estimated });
+  const agents: UsageView["agents"] = {};
+  const sum = { day: line(0, 0, 0, false), week: line(0, 0, 0, false), month: line(0, 0, 0, false) };
+  team.forEach((a, i) => {
+    const k = 1 + ((i * 7) % 5) / 2;
+    const est = a.cli !== "claude";
+    const u = { day: line(42_000 * k, 9_000 * k, 0.6 * k, est), week: line(210_000 * k, 51_000 * k, 3.4 * k, est), month: line(820_000 * k, 190_000 * k, 12.8 * k, est), models: [a.model || (a.cli === "claude" ? "claude-sonnet" : a.cli)], lastAt: now() };
+    agents[a.id] = u;
+    for (const p of ["day", "week", "month"] as const) {
+      sum[p].input += u[p].input;
+      sum[p].output += u[p].output;
+      sum[p].cacheRead += u[p].cacheRead;
+      sum[p].cacheWrite += u[p].cacheWrite;
+      sum[p].costUsd += u[p].costUsd;
+      sum[p].estimated ||= u[p].estimated;
+    }
+  });
+  return { agents, project: sum };
+}
+
 export class World {
   snap: OfficeSnapshot;
   preset: Preset;
@@ -127,6 +148,7 @@ export class World {
       })),
       boards: structuredClone(preset.boards),
       tasks,
+      usage: demoUsage(config.team),
       pullRequests,
       environments: [],
       messages: [],

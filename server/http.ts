@@ -1,11 +1,13 @@
 // 127.0.0.1 only. Routes:
 //   GET  /ws?token=…            browser WebSocket (browser token)
 //   POST /hook/<agent>/<event>  Claude Code hooks (agent token)
+//   POST /otlp/<agent>/<token>/v1/metrics|logs   token use from agent programs (OpenTelemetry)
 //   GET  /api/health
 //   GET  /*                     the built UI (dist/), when present
 
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { gunzipSync } from "node:zlib";
 import { extname, join, normalize } from "node:path";
 import { timingSafeEqual } from "node:crypto";
 import { WebSocketServer, type WebSocket } from "ws";
@@ -18,6 +20,8 @@ import type { Planner } from "./planner";
 import type { Team } from "./team";
 import type { McpExtras } from "./mcp";
 import { log } from "./lib/log";
+import { decodeLogs, decodeMetrics } from "./otlp";
+import type { Usage } from "./usage";
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml",
@@ -28,6 +32,20 @@ function safeEqual(a: string, b: string) {
   const x = Buffer.from(a);
   const y = Buffer.from(b);
   return x.length === y.length && timingSafeEqual(x, y);
+}
+
+function readRaw(req: IncomingMessage, limit: number): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks: Buffer[] = [];
+    req.on("data", (c: Buffer) => {
+      size += c.length;
+      if (size > limit) reject(new Error("too large"));
+      else chunks.push(c);
+    });
+    req.on("end", () => resolve(Buffer.concat(chunks)));
+    req.on("error", reject);
+  });
 }
 
 function readBody(req: IncomingMessage, limit = 256 * 1024): Promise<string> {
@@ -56,6 +74,7 @@ interface Options {
   distDir: string | null;
   allowedOrigins: string[];
   commands: Record<string, (...args: unknown[]) => unknown>;
+  usage?: Usage;
 }
 
 export function startHttp(o: Options) {
@@ -79,6 +98,33 @@ export function startHttp(o: Options) {
         res.writeHead(204);
         return void res.end();
       } catch {
+        return send(res, 400, "bad request");
+      }
+    }
+
+    // Token use (OTLP/HTTP, JSON or protobuf): the agent and its token are in the path, since not every
+    // program can send headers. Unknown metrics are ignored; a bad body gets 400 (the exporter retries).
+    if (req.method === "POST" && url.pathname.startsWith("/otlp/")) {
+      const [, , agentRaw, tokenRaw, v1, signal] = url.pathname.split("/");
+      const agentId = decodeURIComponent(agentRaw ?? "");
+      if (!safeEqual(tokenRaw ?? "", o.agentToken) || !o.hub.cfg(agentId) || v1 !== "v1") return send(res, 401, "unauthorized");
+      if (signal !== "metrics" && signal !== "logs") return send(res, 404, "");
+      try {
+        let body = await readRaw(req, 4 * 1024 * 1024);
+        if (/gzip/i.test(String(req.headers["content-encoding"] ?? ""))) body = gunzipSync(body);
+        const type = String(req.headers["content-type"] ?? "");
+        if (o.usage) {
+          if (signal === "metrics") o.usage.ingestMetrics(agentId, decodeMetrics(body, type));
+          else o.usage.ingestLogs(agentId, decodeLogs(body, type));
+        }
+        // An empty export response: {} as JSON, or an empty protobuf message.
+        if (/protobuf/i.test(type)) {
+          res.writeHead(200, { "Content-Type": "application/x-protobuf" });
+          return void res.end();
+        }
+        return send(res, 200, "{}", "application/json");
+      } catch (err) {
+        if (process.env.HQ_DEBUG) log.warn(`otlp ${agentId}: ${err instanceof Error ? err.message : err}`);
         return send(res, 400, "bad request");
       }
     }

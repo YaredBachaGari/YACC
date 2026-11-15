@@ -95,3 +95,9 @@ export function ago(iso: string, now: number): string {
   const h = Math.floor(m / 60);
   return h < 24 ? `${h}h` : `${Math.floor(h / 24)}d`;
 }
+
+/** Dollars, with fewer decimals as the amount grows ($0.042, $1.80, $120). */
+export const usdText = (n: number) => (n >= 100 ? `$${n.toFixed(0)}` : n >= 1 ? `$${n.toFixed(2)}` : n > 0 ? `$${n.toFixed(3)}` : "$0");
+
+/** Token counts the short way: 950, 12.4k, 3.1M. */
+export const tokensText = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}k` : String(Math.round(n)));

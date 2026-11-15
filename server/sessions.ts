@@ -9,7 +9,8 @@ import { stackSkills } from "../src/data/stack";
 import { hasHqSkills, prepareSkills } from "./skills";
 import { resolve, sep } from "node:path";
 import { CLI_LABEL, HOST_TERMINAL, type AgentCli, type SetupCheckId, type WorkspaceInfo } from "../src/data/types";
-import { DEEPSEEK_SBX_PROVIDER, requiredChecks, runtimeOf, unsupportedReason } from "../src/data/models";
+import { DEEPSEEK_SBX_PROVIDER, PROVIDERS, describePick, detectLimit, fallbackFor, providerOf, requiredChecks, routeFor, runtimeOf, unsupportedReason, withModel } from "../src/data/models";
+import type { AgentConfig, ModelChoiceInUse, ModelPick, ProviderId, Task } from "../src/data/types";
 import { adapters, localBinary } from "./adapters";
 import type { Hub } from "./hub";
 import { sessionBackend, type LaunchSpec, type TermHandle } from "./backends";
@@ -84,6 +85,17 @@ export class Sessions {
   onSessionReattached: (agentId: string) => void = () => {};
   /** When the agent's last hook arrived (from the inbox). */
   lastHookAt: (agentId: string) => number = () => 0;
+  /** Set by main: a notice for an agent from HQ (after a model switch). */
+  notify: (agentId: string, text: string) => void = () => {};
+  /** Set by main: no fallback could take over from a limited model; the CEO decides (an action item). */
+  onStuckAtLimit: (agentId: string, title: string, details: string) => void = () => {};
+  /** Agents whose session is being restarted on another model: their messages wait. */
+  private switching = new Set<string>();
+  /** When each provider last stopped an agent at a usage limit. */
+  private limitedAt = new Map<ProviderId, number>();
+  /** The last limit line seen per agent, so one message on screen counts once. */
+  private limitSeen = new Map<string, string>();
+  private limitTick = 0;
   private polling: NodeJS.Timeout | null = null;
   /** Consecutive polls that saw a "working" agent's screen sitting idle. */
   private idleScreens = new Map<string, number>();
@@ -98,9 +110,11 @@ export class Sessions {
 
   async start(id: string) {
     const hub = this.hub;
-    const agent = hub.cfg(id);
+    const own = hub.cfg(id);
     const st = hub.status(id);
-    if (!agent || !st || st.session.state === "running" || st.session.state === "starting") return;
+    if (!own || !st || st.session.state === "running" || st.session.state === "starting") return;
+    // Routing or a fallback may have switched it to another model (status.using); config.yml keeps its own.
+    const agent = st.using ? withModel(own, st.using) : own;
     const setup = hub.snap.setup;
     const fail = (detail: string) => {
       hub.setSession(id, { state: "failed", detail });
@@ -130,7 +144,8 @@ export class Sessions {
       const adapter = adapters[agent.cli];
       // App variables reach the agent in sandbox mode and in Local mode with tmux (not Local on Windows).
       const hasEnvFile = !!this.envFileFor(id) && (agent.mode === "sandbox" || this.backend.persistent);
-      await adapter.writeFiles(dir, agent, hub.snap.config, this.agentToken, { hasEnvFile, memory: this.memoryText?.() ?? "" });
+      const claudeVersion = hub.snap.setup.checks.find((c) => c.id === "claude" && c.status === "ok")?.detail ?? null;
+      await adapter.writeFiles(dir, agent, hub.snap.config, this.agentToken, { hasEnvFile, memory: this.memoryText?.() ?? "", claudeVersion });
       // Whatever teammates have shared so far, so a new hire starts with it.
       this.deliverShared?.(id);
       const specs = stackSkills(hub.snap.config.stack);
@@ -153,6 +168,17 @@ export class Sessions {
           // sbx only accepts a size when it creates the sandbox; an existing (stopped) one keeps its size,
           // and passing --cpus/--memory again makes `sbx run` fail. "Recreate sandbox" applies a new size.
           const { cpus, memoryGb } = agent.sandbox.resources;
+          // A sandbox is made for one agent program. One made for another (the model changed) is recreated;
+          // the agent's folder is on your machine, so its work stays.
+          const kit = await this.sandboxAgent(name);
+          if (kit && kit !== launch.sbxAgent) {
+            hub.setSession(id, { detail: `Recreating the sandbox for ${CLI_LABEL[agent.cli]}…` });
+            const rm = await run("sbx", ["rm", "-f", name], { timeoutMs: 60_000 });
+            if (rm.ok) {
+              this.onSandboxRemoved(id);
+              hub.activity("session", id, `${agent.name}'s sandbox was made for ${kit}; recreated it for ${CLI_LABEL[agent.cli]} (its folder and work are kept).`);
+            }
+          }
           const isNew = !(await this.sandboxExists(name));
           const size = !isNew ? [] : [...(cpus ? ["--cpus", String(cpus)] : []), ...(memoryGb ? ["--memory", `${Math.round(memoryGb * 1024)}m`] : [])];
           const env = [...(envFile ? ["--env-file", envFile] : []), "-e", `BROWSER=${SANDBOX_BROWSER}`];
@@ -164,7 +190,7 @@ export class Sessions {
       this.attach(id);
       hub.setSession(id, { state: "running", detail: null, workspace: dir });
       hub.setStatus(id, { state: "idle", note: agent.mode === "sandbox" ? "Sandbox running" : "Running locally" });
-      hub.activity("session", id, `${agent.name} started (${CLI_LABEL[agent.cli]}${agent.model.trim() ? `, ${agent.model.trim()}` : ""}, ${agent.mode === "sandbox" ? "Docker Sandbox" : "Local mode"})`);
+      hub.activity("session", id, `${agent.name} started (${CLI_LABEL[agent.cli]}${agent.model.trim() ? `, ${agent.model.trim()}` : ""}, ${agent.mode === "sandbox" ? "Docker Sandbox" : "Local mode"}${st.using ? `; ${st.using.reason}` : ""})`);
       if (agent.mode === "sandbox") {
         setTimeout(() => void this.refreshSandboxSizes(), 4000);
         void this.whenSandboxExists(id).then((ok) => ok && this.onSandboxReady(id));
@@ -250,6 +276,176 @@ export class Sessions {
     } catch {
       return false;
     }
+  }
+
+  /** Which agent program a sandbox was made for (claude, codex, gemini), or null if unknown or none. */
+  private async sandboxAgent(name: string): Promise<string | null> {
+    const r = await run("sbx", ["ls", "--json"], { timeoutMs: 10_000 });
+    try {
+      const row = (sandboxList(r.stdout) ?? []).find((s) => s.name === name) as { agent?: unknown } | undefined;
+      return typeof row?.agent === "string" && row.agent ? row.agent : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // ------------------------------------------------------------ models in use: routing, fallback, limits
+
+  /** Whether HQ is restarting this agent on another model (its messages wait meanwhile). */
+  isSwitching(id: string) {
+    return this.switching.has(id);
+  }
+
+  /** Whether this agent could run on that model here: a combination that works, with its setup checks passing. */
+  canRun(agent: AgentConfig, pick: ModelPick): boolean {
+    const cfg = this.hub.snap.config;
+    const next = withModel(agent, pick);
+    if (unsupportedReason(next, cfg.providers)) return false;
+    if (next.mode === "sandbox" && !this.hub.snap.setup.sandboxReady) return false;
+    return requiredChecks(next, cfg).every((cid) => {
+      const c = this.hub.snap.setup.checks.find((x) => x.id === cid);
+      return !!c && c.status !== "missing" && c.status !== "unsupported";
+    });
+  }
+
+  /** Providers that stopped an agent at a limit in the last hour. */
+  private limitedProviders(): ProviderId[] {
+    const hour = 60 * 60_000;
+    return [...this.limitedAt].filter(([, at]) => Date.now() - at < hour).map(([p]) => p);
+  }
+
+  /**
+   * Runs the agent on `pick` (null: its own model) from now on. A running session is restarted on it,
+   * keeping its folder, sandbox (when it's the same program) and current task; messages wait meanwhile.
+   */
+  async switchModel(id: string, pick: ModelPick | null, why: ModelChoiceInUse["why"], reason: string) {
+    const hub = this.hub;
+    const agent = hub.cfg(id);
+    const st = hub.status(id);
+    if (!agent || !st) return;
+    const using: ModelChoiceInUse | null = pick && !(pick.cli === agent.cli && (pick.model ?? "").trim() === agent.model.trim()) ? { cli: pick.cli, model: pick.model?.trim() ?? "", why, reason } : null;
+    const was = st.using ? withModel(agent, st.using) : agent;
+    const next = using ? withModel(agent, using) : agent;
+    hub.setStatus(id, { using });
+    if (was.cli === next.cli && was.model.trim() === next.model.trim()) return;
+    hub.activity("config", id, `${agent.name} ${using ? `now runs on ${describePick(using)}: ${reason}` : `is back on its own model, ${describePick(agent)}`}.`);
+    if (st.session.state !== "running") return; // the next start uses it
+    this.switching.add(id);
+    try {
+      const task = st.currentTaskId;
+      const name = this.name(id);
+      this.onSessionDown(id);
+      this.detach(id);
+      this.closeShell(id);
+      await this.backend.kill(name);
+      hub.setSession(id, { state: "stopped", detail: null });
+      hub.setStatus(id, { state: "idle", note: `Switching to ${describePick(next)}` });
+      await this.start(id);
+      if (task) hub.setStatus(id, { currentTaskId: task });
+    } finally {
+      this.switching.delete(id);
+    }
+  }
+
+  /**
+   * A task is about to be handed to an agent: a routing rule for its kind may switch the agent's model
+   * first. An agent on a routed model goes back to its own for a task without a rule. A busy agent keeps
+   * its model (switching would cut its turn short). Fallbacks stay until you switch back.
+   */
+  applyRouting(agentId: string, task: Task) {
+    const hub = this.hub;
+    const agent = hub.cfg(agentId);
+    const st = hub.status(agentId);
+    if (!agent || !st || st.using?.why === "fallback") return;
+    let pick = routeFor(task.kind, hub.snap.config);
+    if (pick && this.limitedProviders().includes(providerOf(pick.cli))) {
+      hub.activity("config", agentId, `${task.id} is ${task.kind} work for ${describePick(pick)}, but that provider is at its usage limit; ${agent.name} keeps its model.`);
+      pick = null;
+    }
+    if (pick && !this.canRun(agent, pick)) {
+      hub.activity("config", agentId, `${task.id} is ${task.kind} work for ${describePick(pick)}, which can't run for ${agent.name} yet (see the setup checklist); it keeps its model.`);
+      pick = null;
+    }
+    if (!pick && st.using?.why !== "routing") return;
+    const current = st.using ? withModel(agent, st.using) : agent;
+    const target = pick ?? { cli: agent.cli, model: agent.model };
+    if (current.cli === target.cli && current.model.trim() === (target.model ?? "").trim()) return;
+    if (st.session.state === "running" && st.state === "working") {
+      hub.activity("config", agentId, `${agent.name} is busy, so it starts ${task.id} on ${describePick(current)} instead of switching models.`);
+      return;
+    }
+    // Hold its messages from now: the task message is queued right after this, and must reach the new session.
+    if (st.session.state === "running") this.switching.add(agentId);
+    void this.switchModel(agentId, pick, "routing", `routing rule for ${task.kind} work (${task.id})`).finally(() => this.switching.delete(agentId));
+  }
+
+  /** Back to the agent's own model (Settings or the agent's drawer), and its limit note cleared. */
+  async useOwnModel(id: string) {
+    this.hub.setStatus(id, { limited: null });
+    this.limitSeen.delete(id);
+    await this.switchModel(id, null, "routing", "");
+  }
+
+  /**
+   * The agent's provider stopped it (a usage limit, or billing). The first fallback that can run takes
+   * over and the agent continues its task; with none, the CEO gets an action item.
+   */
+  async onLimit(id: string, line: string, resets: string | null) {
+    const hub = this.hub;
+    const own = hub.cfg(id);
+    const st = hub.status(id);
+    if (!own || !st || this.switching.has(id)) return;
+    const run = st.using ? withModel(own, st.using) : own;
+    const provider = providerOf(run.cli);
+    const label = PROVIDERS[provider].label;
+    this.limitedAt.set(provider, Date.now());
+    const note = resets ? `${label}: usage limit, resets ${resets}` : `${label}: ${line}`;
+    hub.setStatus(id, { limited: { provider, note, at: new Date().toISOString() } });
+    hub.activity("agent.needs-input", id, `${own.name} stopped: ${note}`);
+    const pick = fallbackFor(run, hub.snap.config, this.limitedProviders(), (p) => this.canRun(own, p));
+    if (pick) {
+      await this.switchModel(id, pick, "fallback", `${label} hit its usage limit${resets ? ` (resets ${resets})` : ""}`);
+      const task = hub.status(id)?.currentTaskId;
+      this.notify(
+        id,
+        `You were moved to ${describePick(pick)} because ${label} stopped at its usage limit. Continue where you left off${task ? ` on ${task} (call get_my_task for the details)` : ""}: check your notes and git status first, since your earlier conversation is gone.`,
+      );
+      return;
+    }
+    this.onStuckAtLimit(
+      id,
+      `${own.name} stopped: ${label} usage limit${resets ? `, resets ${resets}` : ""}`,
+      `${line}\n\nNo fallback model can take over${hub.snap.config.routing?.fallback?.length ? " (each is at a limit, the same provider, or not set up)" : ""}. Add one in Settings → Models → Fallback, switch ${own.name}'s model in Settings → Team, or wait for the reset.\n\nTry again: tells ${own.name} to continue now.`,
+    );
+  }
+
+  /** Claude Code's StopFailure. A rate limit is a usage limit only if the screen says so; billing always is. */
+  async onApiFailure(id: string, error: string, message: string) {
+    if (error !== "rate_limit" && error !== "billing_error") return;
+    const st = this.hub.status(id);
+    const own = this.hub.cfg(id);
+    if (!st || !own) return;
+    const program = runtimeOf((st.using ?? own).cli).program;
+    const screen = await this.backend.screenText(this.name(id), 14);
+    const seen = detectLimit(program, screen);
+    if (seen) {
+      this.limitSeen.set(id, seen.line);
+      return this.onLimit(id, seen.line, seen.resets);
+    }
+    if (error === "billing_error") return this.onLimit(id, message || "billing error from the provider", null);
+    this.hub.activity("session", id, `${own.name} hit a rate limit (${message || "429"}). It's at its prompt; HQ will hand it new messages as usual.`);
+  }
+
+  /** Reads an agent's screen for its program's usage-limit message (each message counts once). */
+  private async watchLimit(id: string, name: string) {
+    const st = this.hub.status(id);
+    const own = this.hub.cfg(id);
+    if (!st || !own || st.state === "working" || this.switching.has(id)) return;
+    const program = runtimeOf((st.using ?? own).cli).program;
+    const seen = detectLimit(program, await this.backend.screenText(name, 14));
+    if (!seen || this.limitSeen.get(id) === seen.line) return;
+    this.limitSeen.set(id, seen.line);
+    await this.onLimit(id, seen.line, seen.resets);
   }
 
   /** Waits (up to ~90s) for sbx to list the agent's sandbox — creation can take a while the first time. */
@@ -407,6 +603,7 @@ export class Sessions {
   startPolling() {
     const tick = async () => {
       if (this.hub.snap.setup.checks.find((c) => c.id === "tmux")?.status !== "ok") return;
+      this.limitTick++; // usage-limit screens are read every third poll
       for (const agent of this.hub.snap.config.team) {
         const st = this.hub.status(agent.id);
         if (!st || st.session.state === "starting") continue;
@@ -431,8 +628,10 @@ export class Sessions {
             this.hub.setStatus(agent.id, { note: "Reattached" });
             this.onSessionReattached(agent.id);
           }
-          if (agent.cli === "codex") await this.watchCodexScreen(agent.id, name);
-          await this.reconcileFromScreen(agent.id, runtimeOf(agent.cli).program === "claude" ? "claude" : agent.cli, name);
+          const running = st.using ? withModel(agent, st.using) : agent;
+          if (running.cli === "codex") await this.watchCodexScreen(agent.id, name);
+          await this.reconcileFromScreen(agent.id, runtimeOf(running.cli).program === "claude" ? "claude" : running.cli, name);
+          if (this.limitTick % 3 === 0) await this.watchLimit(agent.id, name);
         } else if (st.session.state === "running") {
           this.detach(agent.id);
           this.closeShell(agent.id);

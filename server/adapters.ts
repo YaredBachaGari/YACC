@@ -10,7 +10,7 @@
 import { agentRead, agentWrite } from "./lib/agentFs";
 import type { AgentCli, AgentConfig, HqConfig } from "../src/data/types";
 import { DEEPSEEK_ANTHROPIC_URL, PERPLEXITY_MCP, PROVIDERS, authFor, mcpFor, modelFor, providerOf, runtimeOf } from "../src/data/models";
-import { adoptRoleFile, excludeFromGit, HOOK_SCRIPT, hookCommand, hookScriptFor, hqUrl, isOurs, MCP_CONFIG, ROLE_FILE, roleMd, type RoleExtras, writeClaudeFiles, writeHookScript } from "./agentFiles";
+import { adoptRoleFile, excludeFromGit, HOOK_SCRIPT, hookCommand, hookScriptFor, hqUrl, isOurs, MCP_CONFIG, projectHasOwnTelemetry, ROLE_FILE, roleMd, type RoleExtras, usageUrl, writeClaudeFiles, writeHookScript } from "./agentFiles";
 import { run } from "./lib/exec";
 
 export interface Launch {
@@ -28,10 +28,25 @@ export interface LaunchContext {
   hostEnv: NodeJS.ProcessEnv;
 }
 
+/** What the role file needs, plus what HQ knows about the program on this machine. */
+export interface WriteExtras extends RoleExtras {
+  /** `claude --version` on this machine (Local mode), e.g. "2.1.284 (Claude Code)". */
+  claudeVersion?: string | null;
+}
+
 export interface CliAdapter {
   /** Writes HQ's files into the agent's folder (all git-excluded). */
-  writeFiles(dir: string, agent: AgentConfig, cfg: HqConfig, token: string, extras?: RoleExtras): Promise<void>;
+  writeFiles(dir: string, agent: AgentConfig, cfg: HqConfig, token: string, extras?: WriteExtras): Promise<void>;
   launch(agent: AgentConfig, ctx: LaunchContext): Launch;
+}
+
+/** Claude Code at least this version (StopFailure arrived in 2.1.78). Unknown: false. */
+export function claudeAtLeast(version: string | null | undefined, min: [number, number, number]): boolean {
+  const m = /(\d+)\.(\d+)\.(\d+)/.exec(version ?? "");
+  if (!m) return false;
+  const v = [Number(m[1]), Number(m[2]), Number(m[3])];
+  for (let i = 0; i < 3; i++) if (v[i] !== min[i]) return v[i] > min[i];
+  return true;
 }
 
 /** In Local mode, a role tool like Perplexity is wired into the program itself, with its key from the environment. */
@@ -60,7 +75,13 @@ function claudeModelArgs(agent: AgentConfig): string[] {
 const claude: CliAdapter = {
   async writeFiles(dir, agent, cfg, token, extras = {}) {
     const ownRole = await adoptRoleFile(dir);
-    writeClaudeFiles(dir, agent, cfg, token, { ...extras, ownRole }, { perplexity: localPerplexity(agent, cfg) });
+    const { claudeVersion, ...roleExtras } = extras;
+    writeClaudeFiles(dir, agent, cfg, token, { ...roleExtras, ownRole }, {
+      perplexity: localPerplexity(agent, cfg),
+      // A sandbox has the current Claude Code; on your machine it depends on the installed version.
+      stopFailure: agent.mode === "sandbox" || claudeAtLeast(claudeVersion, [2, 1, 78]),
+      telemetry: !projectHasOwnTelemetry(dir),
+    });
   },
   launch(agent, ctx) {
     // The MCP config path is relative to the agent's folder, where it starts. An absolute path would be the
@@ -119,6 +140,8 @@ export function codexConfig(agent: AgentConfig, cfg: HqConfig, token: string, di
     `http_headers = { Authorization = ${t(`Bearer ${token}`)}, "X-HQ-Agent" = ${t(agent.id)} }`,
   ];
   if (localPerplexity(agent, cfg)) lines.push("", `[mcp_servers.${PERPLEXITY_MCP.name}]`, `url = ${t(PERPLEXITY_MCP.url)}`, 'bearer_token_env_var = "PERPLEXITY_API_KEY"');
+  // Token counts reach HQ as log events (codex.sse_event); prompts are never included.
+  lines.push("", "[otel]", "log_user_prompt = false", `exporter = { otlp-http = { endpoint = ${t(`${usageUrl(agent, cfg.project.hqPort, token)}/v1/logs`)}, protocol = "json" } }`);
   for (const event of CODEX_EVENTS)
     lines.push("", `[[hooks.${event}]]`, `[[hooks.${event}.hooks]]`, 'type = "command"', `command = ${t(hookCommand(url, token, agent.id, event, script))}`);
   return lines.join("\n") + "\n";
@@ -188,7 +211,12 @@ export function geminiSettings(agent: AgentConfig, cfg: HqConfig, token: string,
     // Gemini CLI's timeouts are in milliseconds.
     hooks[native] = [...kept, { matcher: "*", hooks: [{ name: "yacc", type: "command", command: hookCommand(url, token, agent.id, ours, script), timeout: 5000 }] }];
   }
-  return { ...existing, context: { ...(existing.context ?? {}), fileName }, mcpServers, hooks };
+  // Token counts to HQ over OTLP/HTTP (Gemini adds /v1/metrics). A telemetry setup of the project's own is kept.
+  const own = existing.telemetry as { enabled?: boolean; otlpEndpoint?: string } | undefined;
+  const telemetry = own?.enabled && !String(own.otlpEndpoint ?? "").includes("/otlp/")
+    ? own
+    : { enabled: true, target: "local", otlpEndpoint: usageUrl(agent, cfg.project.hqPort, token), otlpProtocol: "http", logPrompts: false };
+  return { ...existing, context: { ...(existing.context ?? {}), fileName }, mcpServers, hooks, telemetry };
 }
 
 const gemini: CliAdapter = {

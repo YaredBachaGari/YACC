@@ -50,6 +50,61 @@ export const AUTH_LABEL: Record<AuthMode, string> = { subscription: "Your subscr
 /** Sign-in choice per provider (config.yml `providers:`). Providers left out use their default. */
 export type ProvidersConfig = Partial<Record<ProviderId, { auth: AuthMode }>>;
 
+export type BudgetPeriod = "day" | "week" | "month";
+export const BUDGET_PERIODS = ["day", "week", "month"] as const satisfies readonly BudgetPeriod[];
+/** A spending limit in US dollars (estimated from tokens; API prices even on a subscription). */
+export interface Budget {
+  usd: number;
+  period: BudgetPeriod;
+}
+
+/** A model choice in routing: which model (cli) and, optionally, which model name. */
+export interface ModelPick {
+  cli: AgentCli;
+  model?: string;
+}
+/** Tasks of this kind go to this model. */
+export interface RoutingRule extends ModelPick {
+  kind: string;
+}
+/** config.yml `routing:`. */
+export interface RoutingConfig {
+  rules?: RoutingRule[];
+  /** Models to switch to, in order, when an agent's model hits a usage limit. */
+  fallback?: ModelPick[];
+}
+
+/** API prices per million tokens, US dollars. */
+export interface ModelPrice {
+  input: number;
+  output: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+}
+
+/** Tokens and estimated cost. */
+export interface UsageLine {
+  input: number; // not counting cached input
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  costUsd: number;
+  /** Some of the cost is YACC's estimate from API prices (the rest the program reported). */
+  estimated: boolean;
+}
+export interface AgentUsageView {
+  day: UsageLine;
+  week: UsageLine;
+  month: UsageLine;
+  models: string[]; // seen this month
+  lastAt: string | null;
+}
+/** Usage per agent and for the project, this day, week and month (local time). */
+export interface UsageView {
+  agents: Record<string, AgentUsageView>;
+  project: { day: UsageLine; week: UsageLine; month: UsageLine };
+}
+
 /** What a role may do. The Team MCP offers each agent only the tools its role allows. */
 export const PERMISSIONS = ["plan", "assign", "work", "review", "approve", "hire"] as const;
 export type Permission = (typeof PERMISSIONS)[number];
@@ -101,6 +156,8 @@ export interface AutonomyConfig {
 export interface TeamLimits {
   /** Most agents the team may have, lead included. The lead cannot hire past it. */
   maxAgents: number;
+  /** Spending limit for the whole team. Reaching it pauses everyone until you decide. */
+  budget?: Budget;
 }
 
 export interface AgentConfig {
@@ -120,6 +177,8 @@ export interface AgentConfig {
   temporary?: boolean;
   /** Which desk in the open-plan office (0-based). The lead has its own desk. Kept unique by normalizeConfig. */
   desk?: number;
+  /** Spending limit for this agent. Reaching it pauses the agent until you decide. */
+  budget?: Budget;
   cli: AgentCli;
   model: string; // optional start model ("" = the CLI's default; users can switch with /model)
   mode: AgentMode;
@@ -229,6 +288,10 @@ export interface HqConfig {
   stack?: StackConfig;
   /** How each model provider is signed in to. Left out: each provider's default (see models.ts). */
   providers?: ProvidersConfig;
+  /** Model by kind of work, and what to switch to at a usage limit. */
+  routing?: RoutingConfig;
+  /** Your own API prices per model (a model name, or part of one), over YACC's built-in estimates. */
+  prices?: Record<string, ModelPrice>;
 }
 
 /** An agent asked to reach a domain its sandbox blocks (Team MCP `request_access`). */
@@ -264,6 +327,20 @@ export interface AgentStatus {
   stateSince: string; // ISO time
   note: string | null; // e.g. "Asking: max PDF size 10 MB or 20 MB?"
   session: SessionInfo;
+  /** Running on another model than its own: a routing rule or a fallback (not saved in config.yml). */
+  using?: ModelChoiceInUse | null;
+  /** Its provider stopped it at a usage limit (or a billing problem). */
+  limited?: { provider: ProviderId; note: string; at: string } | null;
+  /** Why HQ holds its messages, e.g. a budget reached. Null when it works normally. */
+  held?: string | null;
+}
+
+/** The model an agent runs on instead of its own, and why. */
+export interface ModelChoiceInUse {
+  cli: AgentCli;
+  model: string;
+  why: "routing" | "fallback";
+  reason: string;
 }
 
 export type BoardStatus = "active" | "planned" | "done";
@@ -293,6 +370,8 @@ export interface Task {
   files?: string[]; // the only files this task may edit
   doneWhen?: string; // acceptance criteria
   note?: string | null; // e.g. why it's blocked
+  /** Kind of work (e.g. "research"). Routing rules pick the model for it. */
+  kind?: string;
 }
 
 export type ReviewState = "pending" | "reviewing" | "changes-requested" | "passed";
@@ -506,6 +585,7 @@ export interface OfficeSnapshot {
   templates?: Template[];
   sharedFiles?: SharedFile[];
   memory?: ProjectMemory;
+  usage?: UsageView;
 }
 
 /** A file in the project's shared folder (`shared/` in the repo), which every agent can get. */
@@ -542,7 +622,7 @@ export interface ProjectMemory {
 export interface ActionItem {
   id: string;
   /** "request": an agent asked you for something (ask_user). "approval": work waits for your sign-off at a stage gate. */
-  kind?: "request" | "approval" | "hire" | "dismiss";
+  kind?: "request" | "approval" | "hire" | "dismiss" | "budget" | "limit";
   /** hire / dismiss: what the agent asked to do, carried out if you approve. */
   payload?: Record<string, unknown>;
   fromId: string; // agent id
@@ -582,7 +662,7 @@ export interface WelcomeInput {
 
 export type AgentPatch = Partial<
   Pick<AgentConfig, "name" | "roleId" | "reportsTo" | "cli" | "model" | "mode" | "color" | "skills" | "roleMd" | "workspacePath" | "desk">
->;
+> & { budget?: Budget | null };
 
 export type RolePatch = Partial<Pick<RoleConfig, "title" | "can" | "instructions" | "cli" | "model" | "tools">>;
 
@@ -596,6 +676,8 @@ export interface OrgPatch {
   ceoName?: string;
   maxAgents?: number;
   autonomy?: Partial<AutonomyConfig>;
+  /** The team's budget; null removes it. */
+  budget?: Budget | null;
 }
 
 export interface WorkflowPatch {

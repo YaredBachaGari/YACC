@@ -9,12 +9,13 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, watch, writeFi
 import { join } from "node:path";
 import { parse as parseYaml, stringify as toYaml } from "yaml";
 import { z } from "zod";
-import { AGENT_CLIS, CEO_ID, LEAD_ROLE_ID, PERMISSIONS, PROVIDER_IDS, type AgentConfig, type Board, type HqConfig, type RoleConfig, type SandboxSettings, type Task } from "../src/data/types";
+import { AGENT_CLIS, BUDGET_PERIODS, CEO_ID, LEAD_ROLE_ID, PERMISSIONS, PROVIDER_IDS, type AgentConfig, type Board, type HqConfig, type RoleConfig, type SandboxSettings, type Task } from "../src/data/types";
 import { LEAD_NAME, WORKER_NAMES } from "../src/data/names";
 import { defaultAutonomy, DEFAULT_CEO_NAME, DEFAULT_MAX_AGENTS, DEVELOPER_INSTRUCTIONS, defaultRoles, freeRoleId, normalizeConfig, roleSlug } from "../src/data/roles";
 import { codingStages, defaultWorkflowParts } from "../src/data/workflow";
 import { GATES } from "../src/data/types";
 import { slugify } from "./paths";
+import { cleanBudget, cleanRouting } from "../src/data/models";
 import type { RepoInfo } from "./repo";
 
 export interface PlanFile {
@@ -118,6 +119,8 @@ const agentSchema = z.object({
   hiredBy: z.string().optional(),
   temporary: z.boolean().optional(),
   desk: z.number().int().min(1).optional(),
+  /** Spending limit for this agent, e.g. { usd: 5, period: day }. */
+  budget: z.object({ usd: z.number().positive(), period: z.enum(BUDGET_PERIODS).default("month") }).optional(),
 });
 
 const roleSchema = z.object({
@@ -141,7 +144,12 @@ const fileSchema = z.object({
     officeName: z.string().optional(),
   }),
   ceo: z.object({ name: z.string().default(DEFAULT_CEO_NAME) }).default({ name: DEFAULT_CEO_NAME }),
-  limits: z.object({ maxAgents: z.number().int().min(2).default(DEFAULT_MAX_AGENTS) }).default({ maxAgents: DEFAULT_MAX_AGENTS }),
+  limits: z
+    .object({
+      maxAgents: z.number().int().min(2).default(DEFAULT_MAX_AGENTS),
+      budget: z.object({ usd: z.number().positive(), period: z.enum(BUDGET_PERIODS).default("month") }).optional(),
+    })
+    .default({ maxAgents: DEFAULT_MAX_AGENTS }),
   autonomy: z
     .object({ hire: z.enum(["auto", "notify", "ask"]).default("notify"), dismiss: z.enum(["auto", "notify", "ask"]).default("notify") })
     .default(defaultAutonomy()),
@@ -169,6 +177,15 @@ const fileSchema = z.object({
   stack: z.unknown().optional(),
   /** Sign-in per model provider. Keys never go here: they live in Docker Sandboxes' secret store. */
   providers: z.partialRecord(z.enum(PROVIDER_IDS), z.object({ auth: z.enum(["subscription", "api-key"]) })).optional(),
+  /** Model by kind of work, and the fallback order when a model hits a usage limit. */
+  routing: z
+    .object({
+      rules: z.array(z.object({ kind: z.string().min(1), cli: z.enum(AGENT_CLIS), model: z.string().optional() })).optional(),
+      fallback: z.array(z.object({ cli: z.enum(AGENT_CLIS), model: z.string().optional() })).optional(),
+    })
+    .optional(),
+  /** Your API prices per million tokens, by model name (or part of one). */
+  prices: z.record(z.string(), z.object({ input: z.number().min(0), output: z.number().min(0), cacheRead: z.number().min(0).optional(), cacheWrite: z.number().min(0).optional() })).optional(),
 });
 
 /** Thrown for a config.yml that can't be used; the message says what to fix. */
@@ -212,6 +229,7 @@ export function serializeConfig(cfg: HqConfig): { yaml: string; files: Record<st
       ...(a.hiredBy ? { hiredBy: a.hiredBy } : {}),
       ...(a.temporary ? { temporary: true } : {}),
       ...(a.desk !== undefined ? { desk: a.desk + 1 } : {}), // desks are numbered from 1 in the file, as on screen
+      ...(a.budget ? { budget: a.budget } : {}),
       notes: a.roleMd,
       skills: a.skills,
       mcp: a.mcp ?? [],
@@ -221,6 +239,8 @@ export function serializeConfig(cfg: HqConfig): { yaml: string; files: Record<st
     workflow: cfg.workflow,
     ...(cfg.stack ? { stack: cfg.stack } : {}),
     ...(cfg.providers && Object.keys(cfg.providers).length ? { providers: cfg.providers } : {}),
+    ...(cfg.routing && (cfg.routing.rules?.length || cfg.routing.fallback?.length) ? { routing: cfg.routing } : {}),
+    ...(cfg.prices && Object.keys(cfg.prices).length ? { prices: cfg.prices } : {}),
   };
   return { yaml: HEADER + toYaml(doc, { lineWidth: 0 }), files };
 }
@@ -278,10 +298,13 @@ export function parseConfig(text: string, readFile: (relPath: string) => string 
       ...(a.hiredBy ? { hiredBy: a.hiredBy } : {}),
       ...(a.temporary ? { temporary: true } : {}),
       ...(a.desk !== undefined ? { desk: a.desk - 1 } : {}),
+      ...(a.budget ? { budget: cleanBudget(a.budget) ?? undefined } : {}),
     })),
     workflow: { ...f.workflow, stages: f.workflow.stages.map((st) => ({ ...st, id: st.id ?? roleSlug(st.name) })) },
     ...(f.stack ? { stack: f.stack as HqConfig["stack"] } : {}),
     ...(f.providers && Object.keys(f.providers).length ? { providers: f.providers } : {}),
+    ...(f.routing ? (Object.keys(cleanRouting(f.routing)).length ? { routing: cleanRouting(f.routing) } : {}) : {}),
+    ...(f.prices && Object.keys(f.prices).length ? { prices: f.prices } : {}),
   };
   // An agent whose role isn't defined is a typo worth stopping for, not something to guess at.
   for (const a of config.team)

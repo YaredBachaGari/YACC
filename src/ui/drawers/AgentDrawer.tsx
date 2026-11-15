@@ -1,3 +1,5 @@
+import { ModelBanner, UsageSection } from "./UsageBits";
+import { describePick } from "../../data/models";
 import { useEffect, useState, type ReactNode } from "react";
 import { CLI_LABEL, HUMAN_ID, type AccessRequest, type AgentConfig, type AgentStatus, type OfficeSnapshot } from "../../data/types";
 import { officeActions, useOffice } from "../../store/office";
@@ -35,11 +37,12 @@ export function AgentDrawer({ id, initialTab }: { id: string; initialTab?: Agent
             <StateChip state={status.state} />
           </div>
           <div className="truncate font-term text-[17px] text-muted">
-            {agent.role} · {CLI_LABEL[agent.cli]}{agent.model ? ` ${agent.model}` : ""} · {agent.mode === "sandbox" ? "Docker Sandbox" : "Local mode"}
+            {agent.role} · {status.using ? `${describePick(status.using)} ↻` : `${CLI_LABEL[agent.cli]}${agent.model ? ` ${agent.model}` : ""}`} · {agent.mode === "sandbox" ? "Docker Sandbox" : "Local mode"}
           </div>
         </div>
       </DrawerHeader>
       <SessionBar agent={agent} status={status} />
+      <ModelBanner agent={agent} status={status} />
       {access ? (
         <AccessCard request={access} agent={agent} />
       ) : (
@@ -318,6 +321,7 @@ function TaskTab({ snap, agent, taskId }: { snap: OfficeSnapshot; agent: AgentCo
             </div>
           )}
           {task.doneWhen && <div className="mt-1 text-[13px]"><b>Done when:</b> {task.doneWhen}</div>}
+          {task.kind && <div className="mt-1 text-[13px]"><b>Kind:</b> {task.kind}</div>}
           {task.needs.length > 0 && (
             <div className="text-[14px]">
               Needs: {task.needs.map((n) => `${n} (${snap.tasks.find((t) => t.id === n)?.status ?? "?"})`).join(", ")}
@@ -336,6 +340,7 @@ function TaskTab({ snap, agent, taskId }: { snap: OfficeSnapshot; agent: AgentCo
       ) : (
         <p className="mb-4 text-[15px] text-muted">No task right now.</p>
       )}
+      <UsageSection agent={agent} />
       <SectionTitle>Assign a task</SectionTitle>
       <div className="flex gap-2">
         <select className="field" value={pick} onChange={(e) => setPick(e.target.value)} aria-label="Task to assign">

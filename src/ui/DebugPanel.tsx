@@ -48,6 +48,7 @@ function summary(e: OfficeEvent): string {
     case "briefing.updated": return `${e.briefing.kind} from ${e.briefing.fromId}`;
     case "shared.updated": return `${e.files.length} shared files`;
     case "memory.updated": return "project memory";
+    case "usage.updated": return "usage";
     case "mcp.updated": return `${e.mcp.servers.length} MCP servers`;
     case "access.updated": return `${e.request.agentId} ${e.request.domain} ${e.request.status}`;
   }
