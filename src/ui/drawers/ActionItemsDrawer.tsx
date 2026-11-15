@@ -156,6 +156,23 @@ function Item({ item, from, now }: { item: ActionItem; from?: { id: string; name
             Send back
           </button>
         </div>
+      ) : item.kind === "budget" || item.kind === "limit" ? (
+        <div className="mt-2 flex items-center gap-2">
+          {item.kind === "limit" && (
+            <input className="field min-w-0 flex-1 text-[13px]" value={note} placeholder="Note for the agent (optional)" onChange={(e) => setNote(e.target.value)} />
+          )}
+          <button className="btn px-2 text-[12px]" onClick={() => officeActions.resolveActionItem(item.id, "done", note)}>
+            {item.kind === "budget" ? "Keep going" : "Try again"}
+          </button>
+          <button className="btn px-2 text-[12px]" onClick={() => officeActions.resolveActionItem(item.id, "dismissed", note)}>
+            {item.kind === "budget" ? "Stay paused" : "Dismiss"}
+          </button>
+          {item.kind === "budget" && (
+            <button className="ml-auto text-[12px] underline" onClick={() => ui.openSettings("models")}>
+              Change budgets
+            </button>
+          )}
+        </div>
       ) : item.kind === "hire" || item.kind === "dismiss" ? (
         <div className="mt-2 flex items-center gap-2">
           <input className="field min-w-0 flex-1 text-[13px]" value={note} placeholder="Note for the lead (optional)" onChange={(e) => setNote(e.target.value)} />

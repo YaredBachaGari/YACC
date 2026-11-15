@@ -9,7 +9,15 @@ interface HookPayload {
   tool_name?: string;
   message?: string;
   notification_type?: string;
+  /** StopFailure (Claude Code): rate_limit, billing_error, authentication_failed, … (older versions: error_type). */
+  error?: string;
+  error_type?: string;
+  error_message?: string;
+  error_details?: string;
 }
+
+/** Set by main: a turn ended on an API error (Claude Code's StopFailure). Sessions decide if it's a usage limit. */
+export const hookCallbacks: { onApiFailure: ((agentId: string, error: string, message: string) => void) | null } = { onApiFailure: null };
 
 const clip = (s: string, n = 80) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
 
@@ -69,6 +77,15 @@ export function handleHook(hub: Hub, inbox: Inbox, agentId: string, event: strin
       }
       hub.setStatus(agentId, { state: "needs-input", note: `Asking: ${clip(msg)}` });
       hub.activity("agent.needs-input", agentId, `${name} needs you: ${clip(msg, 60)}`);
+      break;
+    }
+    case "StopFailure": {
+      // Claude Code: the turn ended on an API error. The agent is back at its prompt.
+      turnOpen.set(agentId, false);
+      const error = String(body.error_type ?? body.error ?? "unknown");
+      const message = String(body.error_message ?? body.error_details ?? "");
+      hub.setStatus(agentId, { state: "idle", note: `Stopped on an API error (${error.replace(/_/g, " ")})` });
+      hookCallbacks.onApiFailure?.(agentId, error, message);
       break;
     }
     case "Stop": {

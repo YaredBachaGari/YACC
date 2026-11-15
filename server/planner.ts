@@ -17,13 +17,20 @@ export interface NewTask {
   needs?: string[];
   /** Stage id to start in. Left out: the first stage. */
   stage?: string;
+  /** Kind of work; routing rules pick the model for it. */
+  kind?: string;
 }
 
-export type TaskPatch = Partial<Pick<Task, "title" | "description" | "files" | "doneWhen" | "needs" | "status" | "boardId" | "note" | "prNumber" | "stage">>;
+export type TaskPatch = Partial<Pick<Task, "title" | "description" | "files" | "doneWhen" | "needs" | "status" | "boardId" | "note" | "prNumber" | "stage" | "kind">>;
+
+/** A kind of work: lowercase, short, or undefined when empty. */
+export const cleanKind = (k: unknown): string | undefined => (typeof k === "string" && k.trim() ? k.trim().toLowerCase().replace(/\s+/g, " ").slice(0, 40) : undefined);
 
 const now = () => new Date().toISOString();
 
 export class Planner {
+  /** Called just before a task is handed to an agent (routing may switch its model first). */
+  onAssign: ((agentId: string, task: Task) => void) | null = null;
   private seq = 0;
   /** Set by main: the user's action items (Team MCP `ask_user`). */
   actions: ActionItems | null = null;
@@ -90,6 +97,7 @@ export class Planner {
       id, boardId: board.id, title: input.title.trim().slice(0, 120), ownerId: null, status: "todo",
       needs: input.needs ?? [], prNumber: null, description: input.description ?? "", files: input.files ?? [], doneWhen: input.doneWhen ?? "", note: null,
       stage: this.stageFor(input.stage).id, reviewerId: null,
+      ...(cleanKind(input.kind) ? { kind: cleanKind(input.kind) } : {}),
     };
     this.snap.tasks.push(task);
     this.hub.emit({ type: "task.updated", task: { ...task } });
@@ -102,6 +110,13 @@ export class Planner {
     const task = this.task(id);
     if (!task) throw new Error(`No task ${id}`);
     if (patch.stage !== undefined) patch = { ...patch, stage: this.stageFor(patch.stage).id };
+    if (patch.kind !== undefined) {
+      const kind = cleanKind(patch.kind);
+      if (kind) task.kind = kind;
+      else delete task.kind;
+      const { kind: _, ...rest } = patch;
+      patch = rest;
+    }
     Object.assign(task, Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)));
     if (task.status !== "in-review") task.reviewerId = null;
     if (task.status === "done") {
@@ -130,6 +145,7 @@ export class Planner {
     const text = `${by} assigned you ${task.id} (${task.title}). ${this.hub.repo.github ? "Pull main, start" : "Start"} ${task.id}. Call the hq get_my_task tool for the details.`;
     this.record(byId, agentId, `Start ${task.id}: ${task.title}`);
     this.shared?.deliverQuietly(agentId);
+    this.onAssign?.(agentId, task);
     this.inbox.push(agentId, { fromId: byId, kind: "assign", text });
     return task;
   }
@@ -315,6 +331,7 @@ export class Planner {
     if (!this.currentTask(owner.id) || this.currentTask(owner.id)?.id === task.id) this.hub.setStatus(owner.id, { currentTaskId: task.id });
     const busy = this.currentTask(owner.id)?.id !== task.id;
     this.shared?.deliverQuietly(owner.id);
+    if (!busy) this.onAssign?.(owner.id, task);
     const handoff = task.note ? ` From the last stage: ${task.note}` : "";
     this.inbox.push(owner.id, {
       fromId: "hq",

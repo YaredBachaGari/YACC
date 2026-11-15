@@ -2,6 +2,7 @@
 // and the UI (which edits them). Nothing here knows what kind of work the team does:
 // that lives in each role's instructions.
 
+import { cleanBudget } from "./models";
 import { CEO_ID, LEAD_ROLE_ID, PERMISSIONS, type AgentConfig, type HqConfig, type Permission, type RoleConfig } from "./types";
 import { normalizeWorkflow } from "./workflow";
 
@@ -124,7 +125,8 @@ export function normalizeConfig(cfg: HqConfig): string[] {
   const fixed: string[] = [];
   cfg.ceo = { name: (cfg.ceo?.name ?? "").trim().slice(0, 40) || DEFAULT_CEO_NAME };
   const max = Number(cfg.limits?.maxAgents);
-  cfg.limits = { maxAgents: Number.isFinite(max) ? Math.min(MAX_AGENTS_CEILING, Math.max(2, Math.round(max))) : DEFAULT_MAX_AGENTS };
+  const budget = cleanBudget(cfg.limits?.budget);
+  cfg.limits = { maxAgents: Number.isFinite(max) ? Math.min(MAX_AGENTS_CEILING, Math.max(2, Math.round(max))) : DEFAULT_MAX_AGENTS, ...(budget ? { budget } : {}) };
   const au = cfg.autonomy ?? defaultAutonomy();
   cfg.autonomy = {
     hire: AUTONOMY_MODES.includes(au.hire) ? au.hire : defaultAutonomy().hire,

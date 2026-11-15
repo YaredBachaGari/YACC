@@ -36,6 +36,8 @@ jobs:
         run: npx tsx scripts/roles-test.ts
       - name: Models, sign-in and runtimes
         run: npx tsx scripts/models-test.ts
+      - name: Usage, budgets, routing and fallback
+        run: npx tsx scripts/usage-test.ts
       - name: Session backends (fake agent)
         run: npx tsx scripts/session-backend-test.ts
       - name: Agent clones (line endings)

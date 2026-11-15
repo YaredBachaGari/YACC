@@ -1,8 +1,9 @@
+import { describePick } from "../../data/models";
 import { CLI_LABEL } from "../../data/types";
 import { selectTeam, useOffice, type AgentView } from "../../store/office";
 import { ui, useUi } from "../../store/ui";
 import { stateStyle } from "../../theme/tokens";
-import { ago, Portrait, StateChip, useNow } from "../kit";
+import { ago, Portrait, StateChip, usdText, useNow } from "../kit";
 
 function AgentCard({ a, focused, n, now }: { a: AgentView; focused: boolean; n: number; now: number }) {
   const snap = useOffice((s) => s.snap);
@@ -11,6 +12,8 @@ function AgentCard({ a, focused, n, now }: { a: AgentView; focused: boolean; n: 
   const needs = a.status.state === "needs-input";
   const blocked = useOffice((s) => s.snap?.sbx.agents[a.config.id]?.approvals?.length ?? 0);
   const items = useOffice((s) => (s.snap?.actionItems ?? []).filter((i) => i.status === "open" && i.fromId === a.config.id).length);
+  const today = useOffice((s) => s.snap?.usage?.agents[a.config.id]?.day);
+  const using = a.status.using;
   return (
     <button
       className={`panel relative grid w-full cursor-pointer grid-cols-[40px_1fr] gap-x-2.5 gap-y-1 px-2.5 pb-2.5 pt-2 text-left transition-transform hover:-translate-x-px hover:-translate-y-px ${needs ? "outline-[3px] outline-red" : ""}`}
@@ -24,8 +27,8 @@ function AgentCard({ a, focused, n, now }: { a: AgentView; focused: boolean; n: 
       </div>
       <div className="flex min-w-0 items-baseline gap-1.5">
         <b className="text-[17px]">{a.config.name}</b>
-        <span className="truncate text-[13px] text-muted">
-          {a.config.role} · {CLI_LABEL[a.config.cli]}{a.config.model ? ` · ${a.config.model}` : ""}
+        <span className="truncate text-[13px] text-muted" title={using ? `On ${describePick(using)}: ${using.reason}` : undefined}>
+          {a.config.role} · {using ? `${describePick(using)} ↻` : `${CLI_LABEL[a.config.cli]}${a.config.model ? ` · ${a.config.model}` : ""}`}
         </span>
         <span className="kbd ml-auto px-1 text-[13px] leading-none">{n}</span>
       </div>
@@ -33,6 +36,22 @@ function AgentCard({ a, focused, n, now }: { a: AgentView; focused: boolean; n: 
         <StateChip state={a.status.state} />
         <span className="font-term text-[16px] text-muted">{ago(a.status.stateSince, now)}</span>
         {a.config.mode === "local" && <span className="chip text-[11px]">local</span>}
+        {a.status.held && (
+          <span className="chip text-[11px]" style={{ background: "#ffccaa" }} title={`${a.status.held}. Open Action items to decide.`}>
+            paused
+          </span>
+        )}
+        {a.status.limited && !using && (
+          <span className="chip text-[11px]" style={{ background: "#ffccaa" }} title={a.status.limited.note}>
+            at limit
+          </span>
+        )}
+        {!!today?.costUsd && (
+          <span className="ml-auto font-term text-[15px] text-muted" title={`Today: ${today.input + today.output + today.cacheRead} tokens${today.estimated ? " (cost estimated from API prices)" : ""}`}>
+            {today.estimated ? "≈" : ""}
+            {usdText(today.costUsd)}
+          </span>
+        )}
         {items > 0 && (
           <span className="chip text-[11px]" style={{ background: "#ffec27" }} title="Action items from this agent. Open Action items in the top bar.">
             {items} for you

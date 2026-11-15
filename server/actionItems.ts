@@ -63,8 +63,8 @@ export class ActionItems {
     return item;
   }
 
-  /** A hire or dismissal waiting for the CEO (autonomy "ask"). */
-  addDecision(kind: "hire" | "dismiss", fromId: string, title: string, details: string, payload: Record<string, unknown>): ActionItem {
+  /** A hire or dismissal waiting for the CEO (autonomy "ask"), a budget reached, or an agent stopped at a usage limit. */
+  addDecision(kind: "hire" | "dismiss" | "budget" | "limit", fromId: string, title: string, details: string, payload: Record<string, unknown>): ActionItem {
     const item: ActionItem = {
       id: `ai${Date.now().toString(36)}${++this.seq}`,
       kind,
@@ -82,7 +82,7 @@ export class ActionItems {
     this.items.unshift(item);
     this.save();
     this.hub.emit({ type: "action.updated", item: { ...item } });
-    this.hub.activity("agent.needs-input", fromId, `${this.hub.name(fromId)} asks: ${item.title}`);
+    if (kind === "hire" || kind === "dismiss") this.hub.activity("agent.needs-input", fromId, `${this.hub.name(fromId)} asks: ${item.title}`);
     return item;
   }
 
@@ -112,7 +112,7 @@ export class ActionItems {
   resolve(id: string, decision: "done" | "dismissed", note?: string) {
     const item = this.items.find((i) => i.id === id);
     if (!item || item.status !== "open") return;
-    if (item.kind === "hire" || item.kind === "dismiss") {
+    if (item.kind === "hire" || item.kind === "dismiss" || item.kind === "budget" || item.kind === "limit") {
       item.status = decision;
       item.note = note?.trim().slice(0, 1000) || null;
       item.closedAt = new Date().toISOString();

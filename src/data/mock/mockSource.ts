@@ -1,4 +1,4 @@
-import { PROVIDERS } from "../models";
+import { PROVIDERS, cleanRouting } from "../models";
 import { agentPalette } from "../../theme/tokens";
 import type { OfficeDataSource, OfficeEvent, SimSpeed } from "../source";
 import { stackDomains } from "../stack";
@@ -258,7 +258,12 @@ export function createMockSource(): OfficeDataSource {
       }
       // As on the server: model names don't carry over to another program.
       const switched = patch.cli && patch.cli !== agent.cli && typeof patch.model !== "string";
-      Object.assign(agent, patch);
+      const { budget, ...rest } = patch;
+      Object.assign(agent, rest);
+      if (budget !== undefined) {
+        if (budget) agent.budget = budget;
+        else delete agent.budget;
+      }
       if (switched) agent.model = "";
       world.configChanged();
     },
@@ -456,6 +461,18 @@ export function createMockSource(): OfficeDataSource {
       world.configChanged();
     },
 
+    setRouting(routing) {
+      const cfg = world.snap.config;
+      const clean = cleanRouting(routing);
+      if (Object.keys(clean).length) cfg.routing = clean;
+      else delete cfg.routing;
+      world.configChanged();
+    },
+
+    useOwnModel(agentId) {
+      world.setStatus(agentId, { using: null, limited: null });
+    },
+
     setProviderAuth(provider, auth) {
       const cfg = world.snap.config;
       if (!PROVIDERS[provider]?.auth.includes(auth)) return;
@@ -475,6 +492,10 @@ export function createMockSource(): OfficeDataSource {
       if (patch.ceoName?.trim()) cfg.ceo.name = patch.ceoName.trim();
       if (patch.autonomy) cfg.autonomy = { ...cfg.autonomy, ...patch.autonomy };
       if (typeof patch.maxAgents === "number") cfg.limits.maxAgents = Math.max(cfg.team.length, 2, Math.min(MAX_AGENTS_CEILING, Math.round(patch.maxAgents)));
+      if (patch.budget !== undefined) {
+        if (patch.budget) cfg.limits.budget = patch.budget;
+        else delete cfg.limits.budget;
+      }
       world.configChanged();
     },
 

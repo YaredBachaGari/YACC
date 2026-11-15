@@ -18,7 +18,8 @@ import type { Team } from "./team";
 import type { Briefings } from "./briefings";
 import { listTemplates, saveTemplate } from "./templates";
 import { BUILT_IN_TEMPLATES, libraryCard, roleFromCard } from "../src/data/templates";
-import { PROVIDERS } from "../src/data/models";
+import { PROVIDERS, cleanBudget, cleanRouting } from "../src/data/models";
+import type { Budgets } from "./usage";
 import type { Memory } from "./memory";
 import { mergeByNotice } from "./githubSync";
 
@@ -51,7 +52,7 @@ const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(
 const str = (v: unknown, max = 2000) => (typeof v === "string" ? v.slice(0, max) : "");
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
 
-export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx: Sbx, mcp: SbxMcp, teamOps: Team, extra: { briefings: Briefings; memory: Memory }) {
+export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx: Sbx, mcp: SbxMcp, teamOps: Team, extra: { briefings: Briefings; memory: Memory; budgets?: Budgets }) {
   /** Runs an sbx change and reports failures in the activity feed. */
   const attempt = async (agentId: string | null, what: string, fn: () => Promise<void>) => {
     try {
@@ -118,6 +119,11 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx
       if (typeof p.roleId === "string" && agent.roleId !== LEAD_ROLE_ID && p.roleId !== LEAD_ROLE_ID && cfg.roles.some((r) => r.id === p.roleId)) agent.roleId = p.roleId;
       if (typeof p.reportsTo === "string" && agent.roleId !== LEAD_ROLE_ID && (p.reportsTo === CEO_ID || (p.reportsTo !== agent.id && hub.cfg(p.reportsTo)))) agent.reportsTo = p.reportsTo;
       if (p.mode === "sandbox" || p.mode === "local") agent.mode = p.mode;
+      if (p.budget !== undefined) {
+        const budget = cleanBudget(p.budget);
+        if (budget) agent.budget = budget;
+        else delete agent.budget;
+      }
       // Moving to a desk someone has: they swap.
       if (typeof p.desk === "number" && Number.isInteger(p.desk) && p.desk >= 0 && p.desk < MAX_AGENTS_CEILING && agent.roleId !== LEAD_ROLE_ID && p.desk !== agent.desk) {
         const holder = cfg.team.find((a) => a !== agent && a.desk === p.desk);
@@ -132,6 +138,7 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx
       if (Array.isArray(p.skills)) agent.skills = p.skills.map((s) => str(s, 60)).filter(Boolean);
       if (p.workspacePath !== undefined) agent.workspacePath = p.workspacePath ? str(p.workspacePath, 500).trim() || null : null;
       hub.configChanged();
+      if (p.budget !== undefined) extra.budgets?.check();
       // Codex agents add their own setup checks.
       if (`${agent.cli}/${agent.mode}` !== before) void sessions.recheckSetup();
     },
@@ -228,8 +235,26 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx
         // Never below the team you already have: lowering the limit doesn't fire anyone.
         cfg.limits.maxAgents = Math.max(cfg.team.length, 2, Math.min(MAX_AGENTS_CEILING, Math.round(p.maxAgents)));
       }
+      if (p.budget !== undefined) {
+        const budget = cleanBudget(p.budget);
+        if (budget) cfg.limits.budget = budget;
+        else delete cfg.limits.budget;
+      }
       hub.configChanged();
+      if (p.budget !== undefined) extra.budgets?.check();
     },
+
+    setRouting: (routing) => {
+      const cfg = hub.snap.config;
+      const clean = cleanRouting(routing);
+      if (Object.keys(clean).length) cfg.routing = clean;
+      else delete cfg.routing;
+      hub.configChanged();
+      // The models routing and fallbacks can switch to get their setup checks.
+      void sessions.recheckSetup();
+    },
+
+    useOwnModel: (id) => sessions.useOwnModel(str(id, 80)),
 
     updateSandbox: (id, patch) => {
       const agent = hub.cfg(str(id));

@@ -140,9 +140,10 @@ function buildServer(hub: Hub, planner: Planner, team: Team, extras: McpExtras, 
         doneWhen: z.string().optional().describe("Acceptance criteria"),
         needs: z.array(z.string()).optional().describe("Task ids that must be done first"),
         stage: z.string().optional().describe("Workflow stage to start in (id or name). Left out: the first stage."),
+        kind: z.string().optional().describe("Kind of work, e.g. research or writing. Routing rules (see your role) pick the model for it."),
       },
     },
-    guard((args: { title: string; boardId?: string; description?: string; files?: string[]; doneWhen?: string; needs?: string[]; stage?: string }) => {
+    guard((args: { title: string; boardId?: string; description?: string; files?: string[]; doneWhen?: string; needs?: string[]; stage?: string; kind?: string }) => {
       needs("plan");
       return ok(planner.createTask(args, me));
     }),
@@ -161,9 +162,10 @@ function buildServer(hub: Hub, planner: Planner, team: Team, extras: McpExtras, 
         needs: z.array(z.string()).optional(),
         status: z.enum(["todo", "in-progress", "in-review", "done", "blocked"]).optional(),
         stage: z.string().optional().describe("Move it to another workflow stage (id or name)"),
+        kind: z.string().optional().describe("Kind of work (routing picks the model); empty clears it"),
       },
     },
-    guard(({ taskId, ...patch }: { taskId: string; title?: string; description?: string; files?: string[]; doneWhen?: string; needs?: string[]; status?: "todo" | "in-progress" | "in-review" | "done" | "blocked"; stage?: string }) => {
+    guard(({ taskId, ...patch }: { taskId: string; title?: string; description?: string; files?: string[]; doneWhen?: string; needs?: string[]; status?: "todo" | "in-progress" | "in-review" | "done" | "blocked"; stage?: string; kind?: string }) => {
       needs("plan");
       return ok(planner.updateTask(taskId, patch));
     }),

@@ -33,6 +33,8 @@ import type {
   WorkflowPatch,
   ProviderId,
   AuthMode,
+  UsageView,
+  RoutingConfig,
 } from "./types";
 
 export type OfficeEvent =
@@ -57,7 +59,8 @@ export type OfficeEvent =
   | { type: "action.updated"; item: ActionItem }
   | { type: "briefing.updated"; briefing: Briefing }
   | { type: "shared.updated"; files: SharedFile[] }
-  | { type: "memory.updated"; memory: ProjectMemory };
+  | { type: "memory.updated"; memory: ProjectMemory }
+  | { type: "usage.updated"; usage: UsageView };
 
 export type SimSpeed = 1 | 2 | 4;
 
@@ -153,6 +156,10 @@ export interface OfficeDataSource {
   updateOrg(patch: OrgPatch): void;
   /** How a model provider is signed in to: your subscription, or an API key (Settings → Models). */
   setProviderAuth(provider: ProviderId, auth: AuthMode): void;
+  /** Routing rules (model by kind of work) and the fallback order at a usage limit. */
+  setRouting(routing: RoutingConfig): void;
+  /** Back to the agent's own model, after routing or a fallback switched it. */
+  useOwnModel(agentId: string): void;
   updateWorkflow(patch: WorkflowPatch): void;
   updateProject(patch: Partial<ProjectConfig>): void;
   createBoard(title: string): void;

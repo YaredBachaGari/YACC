@@ -26,6 +26,8 @@ export class Inbox {
   private lastSubmit = new Map<string, number>();
   private typing = new Set<string>();
   private timer: NodeJS.Timeout;
+  /** Set by main: why HQ holds an agent's messages (a budget reached, a model switch), or null. */
+  held: ((agentId: string) => string | null) | null = null;
 
   constructor(private hub: Hub, private keys: Keyboard) {
     // Safety net: retry anything queued for agents that have gone idle.
@@ -78,10 +80,10 @@ export class Inbox {
     this.sessionUp.delete(agentId);
   }
 
-  /** Called from the Stop hook: everything queued, as the reason Claude continues with. */
+  /** Called from the Stop hook: everything queued, as the reason Claude continues with. Nothing while held. */
   takeForStop(agentId: string): string | null {
     const q = this.queues.get(agentId);
-    if (!q?.length) return null;
+    if (!q?.length || this.held?.(agentId)) return null;
     this.queues.set(agentId, []);
     return this.format(q);
   }
@@ -90,6 +92,7 @@ export class Inbox {
     const st = this.hub.status(agentId);
     return (
       !!st &&
+      !this.held?.(agentId) &&
       this.sessionUp.has(agentId) &&
       st.session.state === "running" &&
       st.state === "idle" &&
@@ -100,7 +103,7 @@ export class Inbox {
 
   private whyNot(agentId: string): string {
     const st = this.hub.status(agentId);
-    return JSON.stringify({ up: this.sessionUp.has(agentId), session: st?.session.state, state: st?.state, note: st?.note, typing: this.typing.has(agentId), quietMs: Date.now() - (this.lastHook.get(agentId) ?? 0) });
+    return JSON.stringify({ held: this.held?.(agentId) ?? null, up: this.sessionUp.has(agentId), session: st?.session.state, state: st?.state, note: st?.note, typing: this.typing.has(agentId), quietMs: Date.now() - (this.lastHook.get(agentId) ?? 0) });
   }
 
   /** Types queued items into an idle agent. Safe to call any time. */
