@@ -336,7 +336,7 @@ export class Planner {
     this.inbox.push(owner.id, {
       fromId: "hq",
       kind: "assign",
-      text: `${task.id} (${task.title}) is yours for the ${next.name} stage.${handoff} ${busy ? "Start it when your current task is done." : "Start now."} Call the hq get_my_task tool for the details.`,
+      text: `${task.id} (${task.title}) is yours for the ${next.name} stage.${next.description ? ` ${next.name} is done when: ${next.description}` : ""}${handoff} ${busy ? "Start it when your current task is done." : "Start now."} Call the hq get_my_task tool for the details.`,
     });
     return task;
   }

@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { nextAgentName } from "../../data/names";
 import { MAX_AGENTS_CEILING } from "../../data/roles";
 import { AUTONOMY_LABEL, CEO_ID, CLI_LABEL, LEAD_ROLE_ID, type AgentCli, type AgentConfig, type AgentMode, type AutonomyMode } from "../../data/types";
 import { officeActions, useOffice } from "../../store/office";
+import { useUi } from "../../store/ui";
 import { Field, Portrait, SectionTitle } from "../kit";
 import { CommitInput } from "./controls";
 import { RemoveAgentDialog } from "./RemoveAgentDialog";
@@ -29,7 +30,14 @@ export function TeamSettings() {
   const ceo = useOffice((s) => s.snap?.config.ceo);
   const limits = useOffice((s) => s.snap?.config.limits);
   const autonomy = useOffice((s) => s.snap?.config.autonomy);
-  const [open, setOpen] = useState<string | null>(null);
+  // Opened for one agent (from the org chart or a drawer): their row starts expanded.
+  const focus = useUi((s) => (s.settings?.tab === "team" ? s.settings.agentId : undefined));
+  const [open, setOpen] = useState<string | null>(focus ?? null);
+  useEffect(() => {
+    if (!focus) return;
+    setOpen(focus);
+    requestAnimationFrame(() => document.querySelector(`[data-agent-row="${focus}"]`)?.scrollIntoView({ block: "start" }));
+  }, [focus]);
   const [removing, setRemoving] = useState<AgentConfig | null>(null);
   const [ceoLook, setCeoLook] = useState(false);
   if (!team || !ceo || !limits || !autonomy) return null;
@@ -114,7 +122,7 @@ function AgentRow({ agent, expanded, onToggle, onRemove }: { agent: AgentConfig;
   // One desk per possible teammate: the office has room up to the headcount limit.
   const deskCount = Math.max(maxAgents - 1, team.filter((a) => !a.isLead).length);
   return (
-    <div className="border-[3px] border-ink bg-white">
+    <div className="scroll-mt-2 border-[3px] border-ink bg-white" data-agent-row={agent.id}>
       <div className="grid grid-cols-[40px_1fr_1fr_150px_130px_auto] items-end gap-2.5 p-2.5">
         <Portrait color={agent.color} lead={agent.isLead} who={agent} />
         <Field label="Name">

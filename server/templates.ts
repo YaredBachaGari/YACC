@@ -21,7 +21,7 @@ const schema = z.object({
   theme: z.string().optional(),
   item: z.string().default("Task"),
   deliverable: z.enum(["pull-request", "files"]).default("files"),
-  stages: z.array(z.object({ id: z.string().optional(), name: z.string().min(1), owner: z.string().default("any"), gate: z.enum(GATES).default("none"), reviewer: z.string().optional() })).min(1),
+  stages: z.array(z.object({ id: z.string().optional(), name: z.string().min(1), owner: z.string().default("any"), gate: z.enum(GATES).default("none"), reviewer: z.string().optional(), description: z.string().optional() })).min(1),
   roles: z.record(z.string(), z.object({ title: z.string().min(1), can: z.array(z.enum(PERMISSIONS)).default([]), instructions: z.string().default(""), cli: z.enum(["claude", "codex"]).optional(), model: z.string().optional() })),
   team: z.array(z.object({ name: z.string().min(1), role: z.string().min(1) })).min(1),
   autonomy: z.object({ hire: z.enum(["auto", "notify", "ask"]), dismiss: z.enum(["auto", "notify", "ask"]) }).optional(),

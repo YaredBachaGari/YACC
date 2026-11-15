@@ -177,6 +177,8 @@ const fileSchema = z.object({
           owner: z.string().default("any"),
           gate: z.enum(GATES).default("none"),
           reviewer: z.string().optional(),
+          /** What finishing the stage means; told to whoever does it. */
+          description: z.string().optional(),
         }),
       )
       .default(codingStages()),

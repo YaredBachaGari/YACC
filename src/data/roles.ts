@@ -86,6 +86,41 @@ export function freeRoleId(cfg: Pick<HqConfig, "roles">, title: string): string 
 }
 
 /** Who an agent reports to, as a display name. */
+/** Would `agentId` reporting to `managerId` make a loop (they'd end up above themselves)? */
+export function wouldLoop(team: Pick<AgentConfig, "id" | "reportsTo">[], agentId: string, managerId: string): boolean {
+  if (managerId === CEO_ID) return false;
+  const seen = new Set<string>();
+  for (let at: string | undefined = managerId; at && at !== CEO_ID; at = team.find((a) => a.id === at)?.reportsTo) {
+    if (at === agentId || seen.has(at)) return true;
+    seen.add(at);
+  }
+  return false;
+}
+
+export interface OrgNode {
+  /** An agent id, or "ceo". */
+  id: string;
+  reports: OrgNode[];
+}
+
+/** The reporting lines as a tree under the CEO, each level in team order. Agents in a broken line hang under the CEO. */
+export function orgTree(cfg: Pick<HqConfig, "team">): OrgNode {
+  const placed = new Set<string>();
+  const under = (id: string, path: Set<string>): OrgNode[] =>
+    cfg.team
+      .filter((a) => a.reportsTo === id && !placed.has(a.id) && !path.has(a.id))
+      .map((a) => {
+        placed.add(a.id);
+        return { id: a.id, reports: under(a.id, new Set([...path, a.id])) };
+      });
+  const root: OrgNode = { id: CEO_ID, reports: under(CEO_ID, new Set()) };
+  for (const a of cfg.team) if (!placed.has(a.id)) {
+    placed.add(a.id);
+    root.reports.push({ id: a.id, reports: under(a.id, new Set([a.id])) });
+  }
+  return root;
+}
+
 export function managerName(cfg: Pick<HqConfig, "team" | "ceo">, agent: Pick<AgentConfig, "reportsTo">): string {
   if (agent.reportsTo === CEO_ID) return cfg.ceo.name;
   return cfg.team.find((a) => a.id === agent.reportsTo)?.name ?? cfg.ceo.name;
