@@ -5,6 +5,7 @@
 // The YAML files are the source of truth: the Settings screens write them, and edits made
 // by hand are read back while HQ runs (see watchConfig).
 
+import { cleanAvatar, cleanBio, cleanTheme } from "../src/data/profile";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, watch, writeFileSync, type FSWatcher } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml, stringify as toYaml } from "yaml";
@@ -101,6 +102,10 @@ const sandboxSchema = z
   })
   .default({ resources: { cpus: null, memoryGb: null }, allow: [], deny: [] });
 
+const avatarSchema = z
+  .object({ skin: z.number().int().optional(), hair: z.number().int().optional(), style: z.number().int().optional(), glasses: z.boolean().optional(), image: z.string().optional() })
+  .optional();
+
 const agentSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
@@ -121,6 +126,9 @@ const agentSchema = z.object({
   desk: z.number().int().min(1).optional(),
   /** Spending limit for this agent, e.g. { usd: 5, period: day }. */
   budget: z.object({ usd: z.number().positive(), period: z.enum(BUDGET_PERIODS).default("month") }).optional(),
+  /** How they look: a built-in look ({ skin, hair, style, glasses }) or an uploaded picture ({ image: avatars/<file>.png }). */
+  avatar: avatarSchema,
+  bio: z.string().optional(),
 });
 
 const roleSchema = z.object({
@@ -142,8 +150,10 @@ const fileSchema = z.object({
     hqPort: z.number().int().default(7420),
     exportPlan: z.boolean().optional(),
     officeName: z.string().optional(),
+    /** The office look: modern, studio, lab, loft or night. */
+    theme: z.string().optional(),
   }),
-  ceo: z.object({ name: z.string().default(DEFAULT_CEO_NAME) }).default({ name: DEFAULT_CEO_NAME }),
+  ceo: z.object({ name: z.string().default(DEFAULT_CEO_NAME), avatar: avatarSchema }).default({ name: DEFAULT_CEO_NAME }),
   limits: z
     .object({
       maxAgents: z.number().int().min(2).default(DEFAULT_MAX_AGENTS),
@@ -230,6 +240,8 @@ export function serializeConfig(cfg: HqConfig): { yaml: string; files: Record<st
       ...(a.temporary ? { temporary: true } : {}),
       ...(a.desk !== undefined ? { desk: a.desk + 1 } : {}), // desks are numbered from 1 in the file, as on screen
       ...(a.budget ? { budget: a.budget } : {}),
+      ...(a.avatar ? { avatar: a.avatar } : {}),
+      ...(a.bio ? { bio: a.bio } : {}),
       notes: a.roleMd,
       skills: a.skills,
       mcp: a.mcp ?? [],
@@ -274,8 +286,8 @@ export function parseConfig(text: string, readFile: (relPath: string) => string 
     return { id: roleSlug(id), title: r.title, can: r.can, instructions: text.trim(), ...(r.cli ? { cli: r.cli } : {}), ...(r.model ? { model: r.model } : {}), ...(r.tools?.length ? { tools: r.tools } : {}) };
   });
   const config: HqConfig = {
-    project: { id: slugify(f.project.id ?? f.project.name), name: f.project.name, repo: f.project.repo, path: "", hqPort: f.project.hqPort, ...(f.project.exportPlan !== undefined ? { exportPlan: f.project.exportPlan } : {}), ...(f.project.officeName ? { officeName: f.project.officeName } : {}) },
-    ceo: f.ceo,
+    project: { id: slugify(f.project.id ?? f.project.name), name: f.project.name, repo: f.project.repo, path: "", hqPort: f.project.hqPort, ...(f.project.exportPlan !== undefined ? { exportPlan: f.project.exportPlan } : {}), ...(f.project.officeName ? { officeName: f.project.officeName } : {}), ...(cleanTheme(f.project.theme) ? { theme: cleanTheme(f.project.theme) } : {}) },
+    ceo: { name: f.ceo.name, ...(cleanAvatar(f.ceo.avatar) ? { avatar: cleanAvatar(f.ceo.avatar) } : {}) },
     limits: f.limits,
     autonomy: f.autonomy,
     roles,
@@ -299,6 +311,8 @@ export function parseConfig(text: string, readFile: (relPath: string) => string 
       ...(a.temporary ? { temporary: true } : {}),
       ...(a.desk !== undefined ? { desk: a.desk - 1 } : {}),
       ...(a.budget ? { budget: cleanBudget(a.budget) ?? undefined } : {}),
+      ...(cleanAvatar(a.avatar) ? { avatar: cleanAvatar(a.avatar) } : {}),
+      ...(cleanBio(a.bio) ? { bio: cleanBio(a.bio) } : {}),
     })),
     workflow: { ...f.workflow, stages: f.workflow.stages.map((st) => ({ ...st, id: st.id ?? roleSlug(st.name) })) },
     ...(f.stack ? { stack: f.stack as HqConfig["stack"] } : {}),

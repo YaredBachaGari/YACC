@@ -154,6 +154,10 @@ export interface OfficeDataSource {
   removeRole(id: string): void;
   /** The CEO's name and the headcount limit. */
   updateOrg(patch: OrgPatch): void;
+  /** An uploaded picture (a small PNG as base64) for an agent or the CEO ("ceo"); null removes it. */
+  setAvatarImage(who: string, png: string | null): void;
+  /** Where the browser loads an uploaded picture from (`avatar.image` is a path under .yacc/). */
+  avatarUrl(image: string): string;
   /** How a model provider is signed in to: your subscription, or an API key (Settings → Models). */
   setProviderAuth(provider: ProviderId, auth: AuthMode): void;
   /** Routing rules (model by kind of work) and the fallback order at a usage limit. */

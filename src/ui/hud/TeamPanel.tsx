@@ -23,7 +23,7 @@ function AgentCard({ a, focused, n, now }: { a: AgentView; focused: boolean; n: 
     >
       {focused && <span className="absolute -left-4 top-4 text-[14px]">▶</span>}
       <div className="row-span-2">
-        <Portrait color={a.config.color} lead={a.config.isLead} />
+        <Portrait color={a.config.color} lead={a.config.isLead} who={a.config} />
       </div>
       <div className="flex min-w-0 items-baseline gap-1.5">
         <b className="text-[17px]">{a.config.name}</b>

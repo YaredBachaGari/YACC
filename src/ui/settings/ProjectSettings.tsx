@@ -4,6 +4,8 @@ import { FONT_STYLES, savedFont, setFont, type FontStyle } from "../../theme/fon
 import { officeActions, useOffice } from "../../store/office";
 import { ui, useUi, type OfficeStyle } from "../../store/ui";
 import { Field, SectionTitle } from "../kit";
+import { THEME_IDS } from "../../data/types";
+import { THEMES } from "../../officeModern/themes";
 import { CommitInput, Toggle } from "./controls";
 
 function OfficeStylePicker() {
@@ -17,6 +19,47 @@ function OfficeStylePicker() {
           <option value="classic">Classic: pixel office with walking robots and the PR belt</option>
         </select>
       </Field>
+    </section>
+  );
+}
+
+/** The office theme (saved in config.yml, so the whole team sees it), with the wall sign next to it. */
+function ThemePicker() {
+  const project = useOffice((s) => s.snap?.config.project);
+  const classic = useUi((s) => s.officeStyle === "classic");
+  if (!project) return null;
+  const current = project.theme ?? "modern";
+  return (
+    <section className="border-[3px] border-ink bg-white p-3">
+      <SectionTitle>Office theme</SectionTitle>
+      <p className="mb-2 text-[13px] text-muted">
+        Colours, floor, walls and furniture of the modern office. Saved in .yacc/config.yml, so everyone on the project sees it.{classic ? " You're on the classic office: switch the style above to see it." : ""}
+      </p>
+      <div role="radiogroup" aria-label="Office theme" className="grid grid-cols-5 gap-2">
+        {THEME_IDS.map((id) => {
+          const t = THEMES[id];
+          const on = id === current;
+          return (
+            <button
+              key={id}
+              role="radio"
+              aria-checked={on}
+              title={t.description}
+              className={`flex flex-col items-stretch gap-1 border-[3px] p-1.5 text-left ${on ? "border-ink bg-[#fff6d6]" : "border-[#c9c2b4] bg-white hover:border-ink"}`}
+              onClick={() => officeActions.updateProject({ theme: id })}
+            >
+              <span className="flex h-9 overflow-hidden border-2 border-ink" aria-hidden>
+                <i className="block flex-[3]" style={{ background: t.wall.kind === "brick" ? `repeating-linear-gradient(0deg, ${t.wall.top} 0 5px, ${t.wall.brick ?? t.wall.bottom} 5px 6px)` : t.wall.top }} />
+                {t.swatches.map((c, i) => (
+                  <i key={i} className="block flex-[2]" style={{ background: c }} />
+                ))}
+              </span>
+              <span className="text-[13px] font-semibold">{t.label}</span>
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-2 text-[12px] text-muted">{THEMES[current].description}</p>
     </section>
   );
 }
@@ -54,6 +97,7 @@ export function ProjectSettings() {
     <div className="flex flex-col gap-5">
       <SaveTemplate />
       <OfficeStylePicker />
+      <ThemePicker />
       <FontPicker />
       <section className="grid grid-cols-2 gap-3 border-[3px] border-ink bg-white p-3">
         <div className="col-span-2">

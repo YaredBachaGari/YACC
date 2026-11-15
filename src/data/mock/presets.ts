@@ -89,8 +89,8 @@ const askwell: Preset = {
   config: {
     project: { id: "askwell", name: "Askwell", repo: "acme/askwell", path: "~/developer/askwell", hqPort: 7420 },
     team: [
-      agent("michael", "Michael", "Lead", "#ff77a8", { isLead: true }),
-      agent("dwight", "Dwight", "Developer", "#29adff"),
+      agent("michael", "Michael", "Lead", "#ff77a8", { isLead: true, bio: "Plans in small phases and keeps the CEO in the loop.", avatar: { skin: 1, hair: 1, style: 0, glasses: false } }),
+      agent("dwight", "Dwight", "Developer", "#29adff", { bio: "Back end and data. Writes the tests first.", avatar: { skin: 0, hair: 0, style: 4, glasses: true } }),
       agent("jim", "Jim", "Developer", "#ffd23a"),
     ],
     workflow: {

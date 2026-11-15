@@ -22,6 +22,16 @@ import { PROVIDERS, cleanBudget, cleanRouting } from "../src/data/models";
 import type { Budgets } from "./usage";
 import type { Memory } from "./memory";
 import { mergeByNotice } from "./githubSync";
+import { AvatarError, removeAvatar, saveAvatar } from "./avatars";
+import { cleanAvatar, cleanBio, cleanTheme } from "../src/data/profile";
+import type { AvatarConfig } from "../src/data/types";
+
+/** A look from the browser; the uploaded picture is kept (it changes only through setAvatarImage). */
+function withLook(current: AvatarConfig | undefined, patch: unknown): AvatarConfig | undefined {
+  const look = patch === null ? undefined : cleanAvatar({ ...(patch as object), image: undefined });
+  const out = { ...(look ?? {}), ...(current?.image ? { image: current.image } : {}) };
+  return Object.keys(out).length ? out : undefined;
+}
 
 /** A stack from the browser, checked against the catalog. Null when nothing is chosen. */
 function cleanStack(raw: unknown): StackConfig | null {
@@ -119,6 +129,16 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx
       if (typeof p.roleId === "string" && agent.roleId !== LEAD_ROLE_ID && p.roleId !== LEAD_ROLE_ID && cfg.roles.some((r) => r.id === p.roleId)) agent.roleId = p.roleId;
       if (typeof p.reportsTo === "string" && agent.roleId !== LEAD_ROLE_ID && (p.reportsTo === CEO_ID || (p.reportsTo !== agent.id && hub.cfg(p.reportsTo)))) agent.reportsTo = p.reportsTo;
       if (p.mode === "sandbox" || p.mode === "local") agent.mode = p.mode;
+      if (p.avatar !== undefined) {
+        const avatar = withLook(agent.avatar, p.avatar);
+        if (avatar) agent.avatar = avatar;
+        else delete agent.avatar;
+      }
+      if (typeof p.bio === "string") {
+        const bio = cleanBio(p.bio);
+        if (bio) agent.bio = bio;
+        else delete agent.bio;
+      }
       if (p.budget !== undefined) {
         const budget = cleanBudget(p.budget);
         if (budget) agent.budget = budget;
@@ -230,6 +250,11 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx
       const p = (patch ?? {}) as OrgPatch;
       const cfg = hub.snap.config;
       if (typeof p.ceoName === "string" && p.ceoName.trim()) cfg.ceo.name = str(p.ceoName, 40).trim();
+      if (p.ceoAvatar !== undefined) {
+        const avatar = withLook(cfg.ceo.avatar, p.ceoAvatar);
+        if (avatar) cfg.ceo.avatar = avatar;
+        else delete cfg.ceo.avatar;
+      }
       if (p.autonomy) cfg.autonomy = { ...cfg.autonomy, ...p.autonomy }; // normalizeConfig drops anything unknown
       if (typeof p.maxAgents === "number" && Number.isFinite(p.maxAgents)) {
         // Never below the team you already have: lowering the limit doesn't fire anyone.
@@ -404,6 +429,7 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx
       cfg.limits.maxAgents = Math.max(tpl.maxAgents ?? cfg.limits.maxAgents, cfg.team.length);
       if (tpl.autonomy) cfg.autonomy = { ...tpl.autonomy };
       if (tpl.officeName && !cfg.project.officeName) cfg.project.officeName = tpl.officeName;
+      if (tpl.theme && !cfg.project.theme) cfg.project.theme = tpl.theme;
       cfg.workflow.item = tpl.item;
       cfg.workflow.stages = structuredClone(tpl.stages);
       // Pull requests need GitHub; without a remote the work is files (normalizeConfig turns a PR gate into a review).
@@ -466,12 +492,44 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx
         if (name) project.officeName = name;
         else delete project.officeName;
       }
+      if (p.theme !== undefined) {
+        const theme = cleanTheme(p.theme);
+        if (theme) project.theme = theme;
+        else delete project.theme;
+      }
       const exportOn = typeof p.exportPlan === "boolean" && p.exportPlan && !project.exportPlan;
       if (typeof p.exportPlan === "boolean") project.exportPlan = p.exportPlan;
       hub.configChanged();
       if (exportOn) {
         hub.planChanged();
         hub.activity("config", null, "Plan export on: HQ writes docs/plan.md whenever the plan changes.");
+      }
+    },
+
+    /** An uploaded picture for an agent or the CEO ("ceo"); null takes it away. */
+    setAvatarImage: (who, png) => {
+      const cfg = hub.snap.config;
+      const target = str(who, 80);
+      const holder: { avatar?: AvatarConfig; name: string } | undefined = target === CEO_ID ? cfg.ceo : hub.cfg(target);
+      if (!holder) return;
+      const root = hub.repo.root;
+      const old = holder.avatar?.image;
+      if (png === null) {
+        if (!old) return;
+        const { image: _gone, ...look } = holder.avatar ?? {};
+        if (Object.keys(look).length) holder.avatar = look;
+        else delete holder.avatar;
+        hub.configChanged();
+        removeAvatar(root, old);
+        return;
+      }
+      try {
+        const image = saveAvatar(root, target, str(png, 400_000));
+        holder.avatar = { ...(holder.avatar ?? {}), image };
+        hub.configChanged();
+        removeAvatar(root, old);
+      } catch (err) {
+        hub.activity("config", target === CEO_ID ? null : target, err instanceof AvatarError ? `Picture not saved: ${err.message}` : `Couldn't save the picture: ${err instanceof Error ? err.message : err}`);
       }
     },
 

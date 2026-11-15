@@ -119,6 +119,9 @@ HQ never stores key values and never reads your env files.
 | Setting | Where | Applies |
 | --- | --- | --- |
 | Office name (the sign on the wall) | Settings → Project | Right away, for everyone on the project |
+| Office theme: Modern, Studio, Lab, Loft or Night shift | Settings → Project | Right away, for everyone on the project |
+| Agent profile: look or picture, colour, bio | Settings → Team → More | Right away; the bio reaches the agent the next time it starts |
+| Your look as CEO | Settings → Team → Your look in the office | Right away |
 | Font: Pixel, Clean or Mono | Settings → Project | Right away, in this browser only. The office itself stays pixel. |
 | Review tool | Settings → Workflow | Right away |
 | Agents, roles, CLI, mode | Settings → Team | Next time the agent starts |
@@ -129,7 +132,8 @@ HQ never stores key values and never reads your env files.
 
 | File | What | Commit it? |
 | --- | --- | --- |
-| `.yacc/config.yml` (in your repo) | CEO, headcount limit, roles, team, workflow, stack, office name | Yes, so your team shares it |
+| `.yacc/config.yml` (in your repo) | CEO, headcount limit, roles, team, workflow, stack, office name and theme, profiles | Yes, so your team shares it |
+| `.yacc/avatars/` (in your repo) | Pictures uploaded for agents and you (small PNGs) | Yes, so teammates see the same faces |
 | `.yacc/roles/<role>.md` (in your repo) | Each role's instructions | Yes |
 | `.yacc/plan.json` (in your repo) | Boards and tasks | Yes |
 | `docs/plan.md` (in your repo) | A readable copy of the plan, if **Settings → Project → Export plan** is on | Yes |
@@ -191,6 +195,10 @@ The **modern office** (the default) is drawn from your settings:
 - **States.** The laptop logo and the dot on the name tag show what the agent is doing: green working (hands typing), orange waiting on you (a hand up and a "!"), blue in review, a tick when a review passed, grey idle (with a mug). An empty chair means the session isn't running.
 - **Messages** fly between desks as a paper plane.
 - **The whiteboard** in the meeting area shows the active board's stages (or To do / Doing / Review / Done) with a sticky per task in its owner's colour. Click it to open Plans.
+
+**Themes.** **Settings → Project → Office theme** repaints the office: Modern (warm wood, the default), Studio (terracotta, lots of plants), Lab (white desks, tiled floor), Loft (brick walls, dark wood) or Night shift (dark, with the city lit up outside). Templates pick one (Content Studio starts as Studio, R&D Lab as Lab), and the wall sign is the office name next to it. The theme is saved as `project.theme` in `config.yml`, so everyone on the project sees the same office.
+
+**Profiles.** Each agent has a look: HQ picks one from its id, and you can change it in **Settings → Team → More → Profile**: one of twelve built-in looks, or skin, hair, hair style and glasses one by one, or a picture you upload. A picture is cropped to a square and shrunk to 128 px in your browser, saved as a PNG in `.yacc/avatars/`, and drawn round in place of the face, in the office and in the panels. The profile also holds the agent's colour (its shirt) and a short bio, shown in its drawer. The bio goes into the agent's role file under "About you", and teammates see it in `list_workers`. You get a look too: click your face in **Settings → Team**.
 
 Drag to pan, scroll to zoom, double-click to fit. **Settings → Project → Office style** switches to the classic pixel office, where agents walk to the PR belt; the choice is saved in this browser. With reduced motion turned on in your system, the office stops its animations and only refreshes when something changes state.
 
@@ -259,6 +267,22 @@ prices:                                      # optional: your own API prices per
 ```
 
 Budgets: `limits: { maxAgents: 5, budget: { usd: 50, period: month } }` for the team, `budget: { usd: 5, period: day }` on an agent.
+
+Profiles and the theme:
+
+```yaml
+project: { name: Askwell, theme: loft }      # modern, studio, lab, loft or night
+ceo: { name: Abuti, avatar: { skin: 4, hair: 0, style: 3, glasses: true } }
+team:
+  - id: ada
+    name: Ada
+    role: writer
+    color: "#29adff"
+    avatar: { image: avatars/ada-1f2e3d4c.png }   # an uploaded picture, under .yacc/
+    bio: Writes short, plain scripts for older viewers.
+```
+
+`skin` is 0–5, `hair` 0–7, `style` 0–4 (short, long, bun, curly, buzz). Parts you leave out come from the agent's id. Values that don't fit are dropped when the file is read, and a picture path must be under `avatars/`.
 
 `cli` is the agent's model: `claude`, `codex`, `gemini` or `deepseek`. A role's `cli` and `model` are the defaults for new agents with that role, hires included; its `tools` are MCP servers every agent with the role gets. `providers` takes `subscription` or `api-key` for `anthropic`, `openai` and `google`; DeepSeek and Perplexity are API key only.
 

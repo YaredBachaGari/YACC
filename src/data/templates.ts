@@ -3,7 +3,7 @@
 // Built-ins live here; templates you save are folders under .yacc/templates/ (server/templates.ts).
 
 import { DEVELOPER_INSTRUCTIONS, LEAD_DUTIES, WORKER_BASE_INSTRUCTIONS, roleSlug } from "./roles";
-import { ANY_ROLE, LEAD_ROLE_ID, type AutonomyConfig, type DeliverableKind, type Permission, type RoleConfig, type StageConfig } from "./types";
+import { ANY_ROLE, LEAD_ROLE_ID, type AutonomyConfig, type DeliverableKind, type Permission, type RoleConfig, type StageConfig, type ThemeId } from "./types";
 
 /** A ready-made role. `instructions` say what the role does; HQ adds how tasks and tools work. */
 export interface RoleCard {
@@ -28,6 +28,8 @@ export interface Template {
   /** built-in, saved in this project (.yacc/templates/), or saved for you (~/.yacc/templates/). */
   source: "built-in" | "project" | "user";
   officeName?: string;
+  /** The office look it starts with (Settings → Project changes it later). */
+  theme?: ThemeId;
   item: string;
   deliverable: DeliverableKind;
   stages: StageConfig[];
@@ -99,6 +101,7 @@ export const BUILT_IN_TEMPLATES: Template[] = [
     name: "Software Team",
     description: "A lead plans; developers each work on their own branch and open a pull request, reviewed and merged on GitHub.",
     source: "built-in",
+    theme: "modern",
     item: "Task",
     deliverable: "pull-request",
     stages: [{ id: "build", name: "Build", owner: ANY_ROLE, gate: "pull-request" }],
@@ -120,6 +123,7 @@ export const BUILT_IN_TEMPLATES: Template[] = [
     description: "Research, script and edit short videos or articles. The editor reviews every script; you approve before it is final.",
     source: "built-in",
     officeName: "The Studio",
+    theme: "studio",
     item: "Piece",
     deliverable: "files",
     stages: [
@@ -150,6 +154,7 @@ export const BUILT_IN_TEMPLATES: Template[] = [
     description: "Turn a question into a survey, an experiment and an analysis. The principal reviews the analysis; you approve the report.",
     source: "built-in",
     officeName: "The Lab",
+    theme: "lab",
     item: "Experiment",
     deliverable: "files",
     stages: [
@@ -179,6 +184,7 @@ export const BUILT_IN_TEMPLATES: Template[] = [
     name: "Start with a lead",
     description: "Just a lead. Tell it what you need; it hires from the role library, within your headcount limit.",
     source: "built-in",
+    theme: "modern",
     item: "Task",
     deliverable: "files",
     stages: [{ id: "do", name: "Do", owner: ANY_ROLE, gate: "review", reviewer: LEAD_ROLE_ID }],

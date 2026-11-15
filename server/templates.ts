@@ -2,6 +2,7 @@
 // (.yacc/templates/<id>/, share by committing) or for you on this machine (~/.yacc/templates/<id>/).
 // Built-in templates are in src/data/templates.ts. A template is applied once, when a team is created.
 
+import { cleanTheme } from "../src/data/profile";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -17,6 +18,7 @@ const schema = z.object({
   name: z.string().min(1),
   description: z.string().default(""),
   officeName: z.string().optional(),
+  theme: z.string().optional(),
   item: z.string().default("Task"),
   deliverable: z.enum(["pull-request", "files"]).default("files"),
   stages: z.array(z.object({ id: z.string().optional(), name: z.string().min(1), owner: z.string().default("any"), gate: z.enum(GATES).default("none"), reviewer: z.string().optional() })).min(1),
@@ -49,6 +51,7 @@ export function readTemplate(dir: string, source: Template["source"]): Template 
     description: t.description,
     source,
     ...(t.officeName ? { officeName: t.officeName } : {}),
+    ...(cleanTheme(t.theme) ? { theme: cleanTheme(t.theme) } : {}),
     item: t.item,
     deliverable: t.deliverable,
     stages: t.stages.map((s) => ({ ...s, id: s.id ?? roleSlug(s.name) })),
@@ -102,6 +105,7 @@ export function saveTemplate(cfg: HqConfig, brief: string, name: string, where: 
     name: clean,
     description: description.trim().slice(0, 300) || `Saved from ${cfg.project.name}.`,
     ...(cfg.project.officeName ? { officeName: cfg.project.officeName } : {}),
+    ...(cfg.project.theme ? { theme: cfg.project.theme } : {}),
     item: cfg.workflow.item,
     deliverable: cfg.workflow.deliverable,
     stages: cfg.workflow.stages,

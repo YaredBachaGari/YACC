@@ -3,11 +3,14 @@ import { nextAgentName } from "../../data/names";
 import { MAX_AGENTS_CEILING } from "../../data/roles";
 import { AUTONOMY_LABEL, CEO_ID, CLI_LABEL, LEAD_ROLE_ID, type AgentCli, type AgentConfig, type AgentMode, type AutonomyMode } from "../../data/types";
 import { officeActions, useOffice } from "../../store/office";
-import { agentPalette } from "../../theme/tokens";
 import { Field, Portrait, SectionTitle } from "../kit";
 import { CommitInput } from "./controls";
 import { RemoveAgentDialog } from "./RemoveAgentDialog";
 import { ModelDatalists, modelListId, modelPlaceholder } from "./ModelsSettings";
+import { ProfileEditor } from "./ProfileEditor";
+
+/** The CEO's suit in the office (see officeModern/draw.ts). */
+const CEO_SHIRT = "#40506b";
 
 export function CliSelect({ value, onChange }: { value: AgentCli; onChange: (v: AgentCli) => void }) {
   return (
@@ -28,6 +31,7 @@ export function TeamSettings() {
   const autonomy = useOffice((s) => s.snap?.config.autonomy);
   const [open, setOpen] = useState<string | null>(null);
   const [removing, setRemoving] = useState<AgentConfig | null>(null);
+  const [ceoLook, setCeoLook] = useState(false);
   if (!team || !ceo || !limits || !autonomy) return null;
   return (
     <div className="flex flex-col gap-5">
@@ -36,7 +40,10 @@ export function TeamSettings() {
         <p className="mb-3 text-[14px] text-muted">
           You head the team. You brief the lead, and the lead reports back to you. Any agent can ask you directly for an approval, a decision or access.
         </p>
-        <div className="grid grid-cols-[1fr_220px] items-start gap-2.5">
+        <div className="grid grid-cols-[40px_1fr_220px] items-start gap-2.5">
+          <button className="mt-6 rounded-full" onClick={() => setCeoLook(!ceoLook)} aria-label="Your look in the office" aria-expanded={ceoLook} title="Your look in the office">
+            <Portrait color={CEO_SHIRT} lead={false} who={{ id: `ceo:${ceo.name}`, avatar: ceo.avatar }} forceFace />
+          </button>
           <Field label="Your name" hint="How agents refer to you.">
             <CommitInput className="field" value={ceo.name} maxLength={40} onCommit={(v) => v.trim() && officeActions.updateOrg({ ceoName: v.trim() })} />
           </Field>
@@ -49,6 +56,21 @@ export function TeamSettings() {
             />
           </Field>
         </div>
+        <button className="btn mt-2 px-2 text-[13px]" aria-expanded={ceoLook} onClick={() => setCeoLook(!ceoLook)}>
+          {ceoLook ? "Done with your look" : "Your look in the office"}
+        </button>
+        {ceoLook && (
+          <div className="mt-2 border-[3px] border-ink bg-white p-3">
+            <ProfileEditor
+              lookId={`ceo:${ceo.name}`}
+              name={ceo.name}
+              avatar={ceo.avatar}
+              color={CEO_SHIRT}
+              onLook={(avatar) => officeActions.updateOrg({ ceoAvatar: avatar })}
+              onPhoto={(png) => officeActions.setAvatarImage(CEO_ID, png)}
+            />
+          </div>
+        )}
         <div className="mt-3 grid grid-cols-2 gap-2.5">
           {(["hire", "dismiss"] as const).map((k) => (
             <Field key={k} label={k === "hire" ? "When the lead hires" : "When the lead dismisses"} hint={autonomy[k] === "notify" ? "It goes ahead, and you get a note in Briefings." : autonomy[k] === "ask" ? "It waits for you in Action items." : "It goes ahead; it shows only in Activity."}>
@@ -94,7 +116,7 @@ function AgentRow({ agent, expanded, onToggle, onRemove }: { agent: AgentConfig;
   return (
     <div className="border-[3px] border-ink bg-white">
       <div className="grid grid-cols-[40px_1fr_1fr_150px_130px_auto] items-end gap-2.5 p-2.5">
-        <Portrait color={agent.color} lead={agent.isLead} />
+        <Portrait color={agent.color} lead={agent.isLead} who={agent} />
         <Field label="Name">
           <CommitInput className="field" value={agent.name} onCommit={(v) => v.trim() && set({ name: v.trim() })} />
         </Field>
@@ -180,19 +202,21 @@ function AgentRow({ agent, expanded, onToggle, onRemove }: { agent: AgentConfig;
               </select>
             </Field>
           )}
-          <Field label="Colour">
-            <div className="flex flex-wrap gap-1.5">
-              {agentPalette.map((c) => (
-                <button
-                  key={c}
-                  className="h-6 w-6 border-[3px] border-ink"
-                  style={{ background: c, outline: c === agent.color ? "3px solid #241a2e" : undefined, outlineOffset: 1 }}
-                  aria-label={`Colour ${c}`}
-                  onClick={() => set({ color: c })}
-                />
-              ))}
-            </div>
-          </Field>
+          <div className="col-span-2 border-[3px] border-ink bg-white p-3">
+            <span className="mb-2 block text-[13px] font-semibold uppercase tracking-[0.12em] text-muted">Profile</span>
+            <ProfileEditor
+              lookId={agent.id}
+              name={agent.name}
+              avatar={agent.avatar}
+              color={agent.color}
+              lead={agent.isLead}
+              onLook={(avatar) => set({ avatar })}
+              onPhoto={(png) => officeActions.setAvatarImage(agent.id, png)}
+              onColor={(color) => set({ color })}
+              bio={agent.bio}
+              onBio={(bio) => set({ bio })}
+            />
+          </div>
           <Field label="Start with model" hint="Optional. Leave empty for the default. You can switch with /model in the agent's terminal; set it here to keep a choice across restarts (e.g. Opus for the lead). Sign-in per provider: Settings → Models.">
             <CommitInput className="field" value={agent.model} placeholder={modelPlaceholder(agent.cli)} list={modelListId(agent.cli)} onCommit={(v) => set({ model: v.trim() })} />
           </Field>
