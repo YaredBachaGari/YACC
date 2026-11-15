@@ -4,6 +4,7 @@
 //
 // Model names are suggestions for the picker; any name the program accepts can be typed.
 
+import { toolkitMcpFor } from "./toolkits";
 import type { AgentCli, AgentConfig, AuthMode, Budget, BudgetPeriod, HqConfig, ModelPick, ModelPrice, ProviderId, ProvidersConfig, RoutingConfig, RoutingRule, SetupCheckId } from "./types";
 
 export interface ProviderInfo {
@@ -173,10 +174,10 @@ export function modelFor(agent: Pick<AgentConfig, "cli" | "model">): string {
   return m && !/^default$/i.test(m) ? m : runtimeOf(agent.cli).defaultModel;
 }
 
-/** MCP servers an agent gets: its own picks plus its role's tools. */
-export function mcpFor(agent: AgentConfig, cfg: Pick<HqConfig, "roles">): string[] {
+/** MCP servers an agent gets: its own picks, its role's tools and its toolkits'. */
+export function mcpFor(agent: AgentConfig, cfg: Pick<HqConfig, "roles"> & Partial<Pick<HqConfig, "toolkits">>): string[] {
   const role = cfg.roles.find((r) => r.id === agent.roleId);
-  return [...new Set([...(agent.mcp ?? []), ...(role?.tools ?? [])])];
+  return [...new Set([...(agent.mcp ?? []), ...(role?.tools ?? []), ...toolkitMcpFor(agent, cfg)])];
 }
 
 /**

@@ -6,6 +6,7 @@
 // by hand are read back while HQ runs (see watchConfig).
 
 import { cleanAvatar, cleanBio, cleanTheme } from "../src/data/profile";
+import { projectSkillsYaml, toolkitsYaml } from "../src/data/toolkits";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, watch, writeFileSync, type FSWatcher } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml, stringify as toYaml } from "yaml";
@@ -187,6 +188,10 @@ const fileSchema = z.object({
     deploy: z.object({ enabled: z.boolean(), tool: z.enum(["instacloud", "vercel", "custom"]), command: z.string().default(""), perAgentEnvironments: z.boolean().default(false) }),
   }),
   stack: z.unknown().optional(),
+  /** Toolkits: an id (every role) or { id, roles: [...] }. Unknown ids are dropped. */
+  toolkits: z.array(z.unknown()).optional(),
+  /** The team's own skills in .yacc/skills/: a name (every role) or { name, roles: [...] }. */
+  skills: z.array(z.unknown()).optional(),
   /** Sign-in per model provider. Keys never go here: they live in Docker Sandboxes' secret store. */
   providers: z.partialRecord(z.enum(PROVIDER_IDS), z.object({ auth: z.enum(["subscription", "api-key"]) })).optional(),
   /** Model by kind of work, and the fallback order when a model hits a usage limit. */
@@ -252,6 +257,8 @@ export function serializeConfig(cfg: HqConfig): { yaml: string; files: Record<st
     })),
     workflow: cfg.workflow,
     ...(cfg.stack ? { stack: cfg.stack } : {}),
+    ...(cfg.toolkits?.length ? { toolkits: toolkitsYaml(cfg.toolkits) } : {}),
+    ...(cfg.skills?.length ? { skills: projectSkillsYaml(cfg.skills) } : {}),
     ...(cfg.providers && Object.keys(cfg.providers).length ? { providers: cfg.providers } : {}),
     ...(cfg.routing && (cfg.routing.rules?.length || cfg.routing.fallback?.length) ? { routing: cfg.routing } : {}),
     ...(cfg.prices && Object.keys(cfg.prices).length ? { prices: cfg.prices } : {}),
@@ -318,6 +325,8 @@ export function parseConfig(text: string, readFile: (relPath: string) => string 
     })),
     workflow: { ...f.workflow, stages: f.workflow.stages.map((st) => ({ ...st, id: st.id ?? roleSlug(st.name) })) },
     ...(f.stack ? { stack: f.stack as HqConfig["stack"] } : {}),
+    ...(f.toolkits ? { toolkits: f.toolkits as HqConfig["toolkits"] } : {}),
+    ...(f.skills ? { skills: f.skills as HqConfig["skills"] } : {}),
     ...(f.providers && Object.keys(f.providers).length ? { providers: f.providers } : {}),
     ...(f.routing ? (Object.keys(cleanRouting(f.routing)).length ? { routing: cleanRouting(f.routing) } : {}) : {}),
     ...(f.prices && Object.keys(f.prices).length ? { prices: f.prices } : {}),

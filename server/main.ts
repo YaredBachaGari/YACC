@@ -29,6 +29,7 @@ import { Briefings } from "./briefings";
 import { Memory } from "./memory";
 import { SharedFiles } from "./shared";
 import { listTemplates } from "./templates";
+import { listProjectSkills } from "./projectSkills";
 import { Budgets, Usage } from "./usage";
 import { hookCallbacks } from "./hooks";
 
@@ -85,6 +86,7 @@ async function main() {
   const briefings = new Briefings(hub, planner);
   const shared = new SharedFiles(hub);
   const memory = new Memory(hub);
+  hub.snap.projectSkills = listProjectSkills(repo.root);
   const found = listTemplates(repo.root);
   hub.snap.templates = found.templates;
   for (const p of found.problems) hub.activity("config", null, `A template couldn't be read: ${p}`);
@@ -163,6 +165,8 @@ async function main() {
     if ("error" in result) return hub.activity("config", null, `Your edit to config.yml wasn't applied: ${result.error} HQ keeps the last good settings; the next change in Settings will overwrite the file.`);
     const refused = hub.applyExternalConfig(result.config);
     if (refused) return hub.activity("config", null, `Your edit to config.yml wasn't applied: ${refused}`);
+    hub.snap.projectSkills = listProjectSkills(repo.root);
+    hub.emit({ type: "skills.updated", skills: structuredClone(hub.snap.projectSkills) });
     hub.activity("config", null, `Settings reloaded from config.yml.${result.fixed.length ? ` Adjusted: ${result.fixed.join(" ")}` : ""} Role changes reach an agent on its next start.`);
     void sessions.recheckSetup();
   });

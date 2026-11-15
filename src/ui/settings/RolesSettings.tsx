@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { toolsFor } from "../../data/roles";
+import { projectSkillsFor, toolkitsFor } from "../../data/toolkits";
+import { ui } from "../../store/ui";
 import { ROLE_LIBRARY } from "../../data/templates";
 import { CLI_LABEL, LEAD_ROLE_ID, PERMISSIONS, PERMISSION_LABEL, type AgentCli, type Permission, type RoleConfig } from "../../data/types";
 import { officeActions, useOffice } from "../../store/office";
@@ -119,9 +121,26 @@ function RoleRow({ role, holders, expanded, onToggle }: { role: RoleConfig; hold
               <p className="m-0 mt-1 text-[12px] text-muted">On top of the servers you tick per agent in Settings → MCP. Add Perplexity for research in Settings → Models.</p>
             </fieldset>
           )}
+          <RoleKit roleId={role.id} />
         </div>
       )}
     </div>
+  );
+}
+
+/** The toolkits and team skills this role gets (chosen in Settings → Toolkits). */
+function RoleKit({ roleId }: { roleId: string }) {
+  const cfg = useOffice((s) => s.snap?.config);
+  if (!cfg) return null;
+  const kits = toolkitsFor({ roleId }, cfg).map((t) => t.name);
+  const own = projectSkillsFor({ roleId }, cfg);
+  return (
+    <p className="m-0 text-[13px]">
+      <b>Toolkits:</b> {kits.join(", ") || <span className="text-muted">none</span>} · <b>Team skills:</b> {own.join(", ") || <span className="text-muted">none</span>}{" "}
+      <button className="text-[12px] underline" onClick={() => ui.openSettings("stack")}>
+        Change in Toolkits
+      </button>
+    </p>
   );
 }
 

@@ -6,6 +6,7 @@ import { agentRead, agentRemove, agentWrite } from "./lib/agentFs";
 import { run } from "./lib/exec";
 import { join } from "node:path";
 import { stackRoleMd } from "../src/data/stack";
+import { toolkitsRoleMd, type ProjectSkillInfo } from "../src/data/toolkits";
 import { CEO_ID, type AgentConfig, type HqConfig } from "../src/data/types";
 import { can, managerName, roleOf, toolsFor } from "../src/data/roles";
 import { describeFlow } from "../src/data/workflow";
@@ -25,6 +26,8 @@ export interface RoleExtras {
   hasEnvFile?: boolean;
   /** The project memory (brief, recent decisions and lessons), from Memory.forRoleFile(). */
   memory?: string;
+  /** What's in .yacc/skills/ (for the "Your tools" section). */
+  projectSkills?: ProjectSkillInfo[];
 }
 
 /** HQ ≤ 0.3 wrote its role to ROLE.md; recognise that so it can be cleaned up. */
@@ -183,6 +186,7 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
     ...rules.map((r) => `- ${r}`),
     "",
     ...(stackRoleMd(cfg.stack) ? [stackRoleMd(cfg.stack), ""] : []),
+    ...(toolkitsRoleMd(agent, cfg, extras.projectSkills) ? [toolkitsRoleMd(agent, cfg, extras.projectSkills), ""] : []),
     ...(extras.hasEnvFile
       ? [
           "## App variables",

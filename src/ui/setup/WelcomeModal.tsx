@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { LEAD_NAME, nextAgentName, WORKER_NAMES } from "../../data/names";
+import { TOOLKIT_CATALOG, type ToolkitChoice } from "../../data/toolkits";
 import { EMPTY_STACK, frameworks, STACK_CATEGORIES, toolsIn, type StackConfig } from "../../data/stack";
 import { BUILT_IN_TEMPLATES, ROLE_LIBRARY, type Template } from "../../data/templates";
 import { LEAD_ROLE_ID, type AgentCli, type ReviewTool } from "../../data/types";
@@ -31,6 +32,7 @@ export function WelcomeModal() {
   const [reviewTool, setReviewTool] = useState<ReviewTool>(snap?.config.workflow.review.tool ?? "human");
   const [sending, setSending] = useState(false);
   const [stack, setStack] = useState<StackConfig>(EMPTY_STACK);
+  const [toolkits, setToolkits] = useState<ToolkitChoice[]>([]);
   if (!snap) return null;
   if (!template)
     return (
@@ -41,6 +43,7 @@ export function WelcomeModal() {
         onPick={(t) => {
           const title = (id: string) => t.roles.find((r) => r.id === id)?.title ?? id;
           setTemplate(t);
+          setToolkits(t.toolkits ?? []);
           setLead({ name: t.team[0]?.name ?? LEAD_NAME, cli: "claude" });
           setWorkers(t.team.slice(1).map((a) => ({ name: a.name, role: title(a.role), cli: "claude" })));
         }}
@@ -60,7 +63,7 @@ export function WelcomeModal() {
     if (!valid) return;
     setSending(true);
     const hasStack = stack.frameworks.length > 0 || Object.values(stack.tools).some(Boolean);
-    officeActions.completeWelcome({ templateId: template.id, projectName: projectName.trim(), lead, workers, reviewTool, reviewEnabled, ...(hasStack ? { stack } : {}) });
+    officeActions.completeWelcome({ templateId: template.id, projectName: projectName.trim(), lead, workers, reviewTool, reviewEnabled, toolkits, ...(hasStack ? { stack } : {}) });
   };
 
   return (
@@ -142,6 +145,8 @@ export function WelcomeModal() {
             )}
           </section>
 
+          <WelcomeToolkits template={template} toolkits={toolkits} setToolkits={setToolkits} />
+
           {coding && <WelcomeStack stack={stack} setStack={setStack} />}
 
           {coding && <section>
@@ -201,6 +206,37 @@ function PickTemplate({ templates, repo, github, onPick }: { templates: Template
         </div>
       </div>
     </div>
+  );
+}
+
+/** The template's toolkits (on, for the roles it says), and the rest to add for every role. More in Settings → Toolkits. */
+function WelcomeToolkits({ template, toolkits, setToolkits }: { template: Template; toolkits: ToolkitChoice[]; setToolkits: (t: ToolkitChoice[]) => void }) {
+  const title = (id: string) => template.roles.find((r) => r.id === id)?.title ?? id;
+  const original = (id: string) => template.toolkits?.find((c) => c.id === id);
+  return (
+    <section>
+      <h3 className="mb-1 text-[16px] font-bold">Toolkits</h3>
+      <p className="mb-2 text-[13px] text-muted">
+        Agent skills for kinds of work.{template.skills?.length ? ` This template also brings its own skills: ${template.skills.map((sk) => sk.name).join(", ")}.` : ""} Change who gets what later in Settings → Toolkits.
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {TOOLKIT_CATALOG.map((t) => {
+          const on = toolkits.find((c) => c.id === t.id);
+          return (
+            <button
+              key={t.id}
+              className="btn px-2 py-0.5 text-[13px]"
+              aria-pressed={!!on}
+              title={`${t.description}${t.needs ? ` Needs: ${t.needs}` : ""}`}
+              onClick={() => setToolkits(on ? toolkits.filter((c) => c.id !== t.id) : [...toolkits, original(t.id) ?? { id: t.id }])}
+            >
+              {t.name}
+              {on?.roles?.length ? <span className="text-muted"> · {on.roles.map(title).join(", ")}</span> : null}
+            </button>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 

@@ -5,6 +5,7 @@ import { stackDomains } from "../stack";
 import { HOST_TERMINAL, LEAD_ROLE_ID, PERMISSIONS, type AccessRequest, AgentConfig, AgentPatch, Board, NewAgentInput, NewRoleInput, OrgPatch, ProjectMemory, ProjectConfig, RolePatch, SandboxSettings, WorkflowPatch } from "../types";
 import { MAX_AGENTS_CEILING, WORKER_BASE_INSTRUCTIONS, findRole, freeRoleId, wouldLoop } from "../roles";
 import { nextAgentName } from "../names";
+import { SKILL_NAME, cleanProjectSkills, cleanToolkits, type ProjectSkillChoice, type ToolkitChoice } from "../toolkits";
 import { defaultPresetId, presets, type Preset } from "./presets";
 import { Simulation } from "./simulation";
 import * as T from "./terminalScripts";
@@ -27,6 +28,22 @@ export function createMockSource(): OfficeDataSource {
   let last = 0;
   let inputBuf = new Map<string, string>();
 
+  /** The demo's .yacc/skills/: kept in memory. */
+  const mockSkills = new Map<string, { name: string; description: string; body: string }>([
+    [
+      "pr-checklist",
+      {
+        name: "pr-checklist",
+        description: "Use before opening a pull request: what to check and what to write in it.",
+        body: "# Before you open a pull request\n\n- Run the tests and the linter; both pass.\n- The PR says what changed, why, and how you checked it.\n- One task, one PR. Nothing unrelated.",
+      },
+    ],
+  ]);
+  const publishMockSkills = () => {
+    world.snap.projectSkills = [...mockSkills.values()].sort((a, b) => a.name.localeCompare(b.name)).map((s) => ({ name: s.name, description: s.description, problem: null }));
+    listener?.({ type: "skills.updated", skills: structuredClone(world.snap.projectSkills) });
+  };
+
   function findPreset(id: string): Preset {
     return presets.find((p) => p.id === id) ?? presets[0];
   }
@@ -44,6 +61,7 @@ export function createMockSource(): OfficeDataSource {
   }
 
   function boot() {
+    world.snap.projectSkills = [...mockSkills.values()].sort((a, b) => a.name.localeCompare(b.name)).map((x) => ({ name: x.name, description: x.description, problem: null }));
     world.setEmitter((e) => listener?.(e));
     listener?.({ type: "snapshot", snapshot: structuredClone(world.snap) });
     sim.start();
@@ -520,6 +538,55 @@ export function createMockSource(): OfficeDataSource {
         else delete cfg.limits.budget;
       }
       world.configChanged();
+    },
+
+    updateToolkits(list: ToolkitChoice[]) {
+      const cfg = world.snap.config;
+      const kits = cleanToolkits(list, cfg.roles.map((r) => r.id));
+      if (kits.length) cfg.toolkits = kits;
+      else delete cfg.toolkits;
+      world.configChanged();
+    },
+
+    updateProjectSkills(list: ProjectSkillChoice[]) {
+      const cfg = world.snap.config;
+      const own = cleanProjectSkills(list, cfg.roles.map((r) => r.id));
+      if (own.length) cfg.skills = own;
+      else delete cfg.skills;
+      world.configChanged();
+    },
+
+    saveProjectSkill(input: { name: string; description: string; body: string; roles?: string[] }) {
+      const name = input.name.trim();
+      if (!SKILL_NAME.test(name) || !input.description.trim() || !input.body.trim()) {
+        world.activity("config", null, "Skill not saved: give it a name (lowercase letters, numbers and dashes), a description and instructions.");
+        return;
+      }
+      const existed = mockSkills.has(name);
+      mockSkills.set(name, { name, description: input.description.replace(/\s+/g, " ").trim(), body: input.body.trim() });
+      const cfg = world.snap.config;
+      if (!existed && !(cfg.skills ?? []).some((c) => c.name === name)) cfg.skills = cleanProjectSkills([...(cfg.skills ?? []), { name, roles: input.roles }], cfg.roles.map((r) => r.id));
+      publishMockSkills();
+      world.configChanged();
+      world.activity("config", null, `${existed ? "Saved" : "Added"} the skill ${name} (.yacc/skills/${name}/SKILL.md). Agents get it on their next start.`);
+    },
+
+    removeProjectSkill(name: string) {
+      mockSkills.delete(name);
+      const cfg = world.snap.config;
+      cfg.skills = (cfg.skills ?? []).filter((c) => c.name !== name);
+      if (!cfg.skills.length) delete cfg.skills;
+      publishMockSkills();
+      world.configChanged();
+      world.activity("config", null, `Removed the skill ${name}. Agents that had it lose it on their next start.`);
+    },
+
+    refreshProjectSkills() {
+      publishMockSkills();
+    },
+
+    async readProjectSkill(name: string) {
+      return mockSkills.get(name) ?? null;
     },
 
     setAvatarImage(who: string, png: string | null) {

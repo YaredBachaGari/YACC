@@ -1,9 +1,11 @@
 // Browser commands → server actions. Names match OfficeDataSource methods.
+import { cpSync } from "node:fs";
+import { join } from "node:path";
 
 import { AGENT_CLIS, CEO_ID, LEAD_ROLE_ID, PERMISSIONS, PROVIDER_IDS, SERVICE_KEYS, type AgentCli, type AgentConfig, type AgentPatch, type NewRoleInput, type OrgPatch, type ProjectMemory, type ReviewTool, type RolePatch, type WelcomeInput, type NewMcpServer, type Board, type NewAgentInput, type ProjectConfig, type RemoveAgentOptions, type RoleConfig, type SandboxSettings, type SetupCheckId, type WorkflowPatch } from "../src/data/types";
 import { DEVELOPER_INSTRUCTIONS, MAX_AGENTS_CEILING, WORKER_BASE_INSTRUCTIONS, findRole, freeRoleId, leadOf, wouldLoop } from "../src/data/roles";
 import { LEAD_NAME, OFFICE_NAME_MAX } from "../src/data/names";
-import { STACK_CATEGORIES, stackSkills, stackTool, type StackChoice, type StackConfig } from "../src/data/stack";
+import { STACK_CATEGORIES, stackTool, type StackChoice, type StackConfig } from "../src/data/stack";
 import { resolveAccess } from "./access";
 import { ensureSkillCache } from "./skills";
 import { run } from "./lib/exec";
@@ -23,6 +25,9 @@ import type { Budgets } from "./usage";
 import type { Memory } from "./memory";
 import { mergeByNotice } from "./githubSync";
 import { AvatarError, removeAvatar, saveAvatar } from "./avatars";
+import { listProjectSkills, readProjectSkill, removeProjectSkill, SkillError, skillsDir, writeProjectSkill } from "./projectSkills";
+import { cleanProjectSkills, cleanToolkits, teamSkillSets } from "../src/data/toolkits";
+import { mcpFor } from "../src/data/models";
 import { cleanAvatar, cleanBio, cleanTheme } from "../src/data/profile";
 import type { AvatarConfig } from "../src/data/types";
 
@@ -73,6 +78,15 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx
     }
   };
   const team = () => hub.snap.config.team;
+  /** Fetches the skills each agent will need now, so the next Start doesn't wait for them. */
+  const prefetchSkills = (quiet = false) => {
+    for (const specs of teamSkillSets(hub.snap.config))
+      void ensureSkillCache(hub.slug, specs).catch((e) => !quiet && hub.activity("config", null, `Couldn't fetch agent skills: ${String(e instanceof Error ? e.message : e).slice(0, 160)}`));
+  };
+  const refreshSkills = () => {
+    hub.snap.projectSkills = listProjectSkills(hub.repo.root);
+    hub.emit({ type: "skills.updated", skills: structuredClone(hub.snap.projectSkills) });
+  };
 
   const commands: Record<string, (...args: unknown[]) => unknown> = {
     sendTerminalInput: (id, data) => sessions.input(str(id, 80), str(data, 100_000)),
@@ -376,6 +390,68 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx
       if (d) return sbx.answerApproval(str(agentId, 80), str(approvalId, 120), d);
     },
 
+    /** Which toolkits the team uses and for which roles (plan 6.2). Skills reach an agent on its next start; MCP servers right away. */
+    updateToolkits: (raw) => {
+      const cfg = hub.snap.config;
+      const before = JSON.stringify(cfg.toolkits ?? []);
+      const mcpBefore = cfg.team.map((a) => mcpFor(a, cfg).join()).join("|");
+      const kits = cleanToolkits(raw, cfg.roles.map((r) => r.id));
+      if (JSON.stringify(kits) === before) return;
+      if (kits.length) cfg.toolkits = kits;
+      else delete cfg.toolkits;
+      hub.configChanged();
+      prefetchSkills();
+      if (cfg.team.map((a) => mcpFor(a, cfg).join()).join("|") !== mcpBefore) {
+        void mcp.syncTeam();
+        void sessions.recheckSetup();
+      }
+    },
+
+    /** Which roles get each of the team's own skills (.yacc/skills/). */
+    updateProjectSkills: (raw) => {
+      const cfg = hub.snap.config;
+      const list = cleanProjectSkills(raw, cfg.roles.map((r) => r.id));
+      if (list.length) cfg.skills = list;
+      else delete cfg.skills;
+      hub.configChanged();
+    },
+
+    /** Creates or rewrites a project skill. A new one is given to the roles listed (none: every role). */
+    saveProjectSkill: (raw) => {
+      const v = (raw ?? {}) as { name?: unknown; description?: unknown; body?: unknown; roles?: unknown };
+      const name = str(v.name, 64).trim();
+      try {
+        const existed = !!readProjectSkill(hub.repo.root, name);
+        writeProjectSkill(hub.repo.root, name, str(v.description, 2000), str(v.body, 60_000));
+        const cfg = hub.snap.config;
+        if (!existed && !(cfg.skills ?? []).some((c) => c.name === name)) {
+          cfg.skills = cleanProjectSkills([...(cfg.skills ?? []), { name, roles: v.roles }], cfg.roles.map((r) => r.id));
+          hub.configChanged();
+        }
+        refreshSkills();
+        hub.activity("config", null, `${existed ? "Saved" : "Added"} the skill ${name} (.yacc/skills/${name}/SKILL.md). Agents get it on their next start.`);
+      } catch (err) {
+        hub.activity("config", null, err instanceof SkillError ? `Skill not saved: ${err.message}` : `Couldn't save the skill: ${err instanceof Error ? err.message : err}`);
+      }
+    },
+
+    /** Deletes a project skill's folder and takes it from every role. */
+    removeProjectSkill: (name) => {
+      const n = str(name, 64);
+      removeProjectSkill(hub.repo.root, n);
+      const cfg = hub.snap.config;
+      if ((cfg.skills ?? []).some((c) => c.name === n)) {
+        cfg.skills = (cfg.skills ?? []).filter((c) => c.name !== n);
+        if (!cfg.skills.length) delete cfg.skills;
+        hub.configChanged();
+      }
+      refreshSkills();
+      hub.activity("config", null, `Removed the skill ${n}. Agents that had it lose it on their next start.`);
+    },
+
+    /** Reads .yacc/skills/ again (after you add or edit a folder by hand). */
+    refreshProjectSkills: () => refreshSkills(),
+
     /** Saves the project's stack (sanitised against the catalog). The agents get it in ROLE.md on their next start. */
     updateStack: (raw) => {
       const cfg = hub.snap.config;
@@ -386,9 +462,7 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx
       }
       cfg.stack = stack;
       hub.configChanged();
-      // Fetch the skills now so the next Start doesn't wait for them.
-      const specs = stackSkills(cfg.stack);
-      if (specs.length) void ensureSkillCache(hub.slug, specs).catch((e) => hub.activity("config", null, `Couldn't fetch agent skills: ${String(e instanceof Error ? e.message : e).slice(0, 160)}`));
+      prefetchSkills();
     },
 
     resolveAccess: (id, decision) => {
@@ -444,15 +518,27 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx
       if (tools.includes(input.reviewTool as ReviewTool)) cfg.workflow.review.tool = input.reviewTool as ReviewTool;
       if (typeof input.reviewEnabled === "boolean") cfg.workflow.review.enabled = input.reviewEnabled;
       const stack = cleanStack(input.stack);
-      if (stack) {
-        cfg.stack = stack;
-        const specs = stackSkills(stack);
-        if (specs.length) void ensureSkillCache(hub.slug, specs).catch(() => {}); // retried on Start
+      if (stack) cfg.stack = stack;
+      // The template's toolkits, or the ones picked on the welcome screen; and the template's own skills.
+      const roleIds = roles.map((r) => r.id);
+      const kits = cleanToolkits(input.toolkits !== undefined ? input.toolkits : (tpl.toolkits ?? []), roleIds);
+      if (kits.length) cfg.toolkits = kits;
+      for (const sk of tpl.skills ?? []) if (!readProjectSkill(hub.repo.root, sk.name)) {
+        try {
+          if (sk.dir) cpSync(sk.dir, join(skillsDir(hub.repo.root), sk.name), { recursive: true });
+          else writeProjectSkill(hub.repo.root, sk.name, sk.description, sk.body);
+        } catch (err) {
+          hub.activity("config", null, `The template's skill ${sk.name} wasn't added: ${err instanceof Error ? err.message : err}`);
+        }
       }
+      const own = cleanProjectSkills((tpl.skills ?? []).map((sk) => ({ name: sk.name, roles: sk.roles })), roleIds);
+      if (own.length) cfg.skills = own;
+      hub.snap.projectSkills = listProjectSkills(hub.repo.root);
       hub.snap.agents = cfg.team.map((a) => Hub.freshStatus(a.id));
       hub.snap.welcome = false;
       hub.configChanged(); // saves .yacc/config.yml for the first time
       hub.planChanged();
+      prefetchSkills(true); // retried on Start
       await sessions.recheckSetup();
       await sbx.refresh();
       hub.emit({ type: "snapshot", snapshot: structuredClone(hub.snap) });

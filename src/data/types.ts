@@ -1,4 +1,5 @@
 import type { StackConfig } from "./stack";
+import type { ProjectSkillChoice, ProjectSkillInfo, ToolkitChoice } from "./toolkits";
 // Domain types shared by the data source, the store, the office and the HUD.
 
 // ---------------------------------------------------------------- Config
@@ -312,6 +313,10 @@ export interface HqConfig {
   workflow: WorkflowConfig;
   /** Optional: what the project is built with (plan 009). */
   stack?: StackConfig;
+  /** Toolkits the team uses (toolkits.ts), each for every role or the roles listed. */
+  toolkits?: ToolkitChoice[];
+  /** The team's own skills (.yacc/skills/<name>/), each for every role or the roles listed. */
+  skills?: ProjectSkillChoice[];
   /** How each model provider is signed in to. Left out: each provider's default (see models.ts). */
   providers?: ProvidersConfig;
   /** Model by kind of work, and what to switch to at a usage limit. */
@@ -612,6 +617,8 @@ export interface OfficeSnapshot {
   sharedFiles?: SharedFile[];
   memory?: ProjectMemory;
   usage?: UsageView;
+  /** The skill folders in .yacc/skills/ (real HQ: read from disk; given to roles by config.skills). */
+  projectSkills?: ProjectSkillInfo[];
 }
 
 /** A file in the project's shared folder (`shared/` in the repo), which every agent can get. */
@@ -686,6 +693,8 @@ export interface WelcomeInput {
   reviewEnabled: boolean;
   /** Optional: what the project is built with. */
   stack?: StackConfig;
+  /** Toolkits to start with. Left out: the template's. */
+  toolkits?: ToolkitChoice[];
 }
 
 export type AgentPatch = Partial<

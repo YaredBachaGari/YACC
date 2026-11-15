@@ -1,7 +1,8 @@
-// Agent skills for the project's stack (plan 009). Installed once per project
-// into a cache with the skills CLI (`npx skills add`), then copied into each
-// agent's folder: Claude Code reads .claude/skills/, Codex reads .agents/skills/.
-// The copies are git-excluded and replaced when the stack changes.
+// Agent skills (plan 009, step 6.1). Skills from the registry (the coding stack's and the
+// toolkits') are installed with the skills CLI (`npx skills add`) into a cache, one per distinct
+// set of skills, since roles can get different toolkits. The team's own skills are folders in
+// .yacc/skills/. Both are copied into each agent's folder: Claude Code reads .claude/skills/,
+// Codex reads .agents/skills/. The copies are git-excluded and replaced when the choice changes.
 
 import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { agentMkdir, agentPath, agentRemove } from "./lib/agentFs";
@@ -15,15 +16,21 @@ import { projectHome } from "./paths";
 
 const AGENT_DIRS = [".claude/skills", ".agents/skills"]; // Claude Code, Codex
 
-const cacheDir = (slug: string) => join(projectHome(slug), "skills-cache");
 const key = (specs: SkillSpec[]) => JSON.stringify(specs);
+export const cacheDir = (slug: string, specs: SkillSpec[]) => join(projectHome(slug), "skills-cache", createHash("sha1").update(key(specs)).digest("hex").slice(0, 12));
+
+/** A project skill to copy as is: its name and folder. */
+export interface LocalSkill {
+  name: string;
+  dir: string;
+}
 
 let installing: Promise<void> | null = null;
 
 /** Installs the specs into the project's cache (once per change of specs). */
 export function ensureSkillCache(slug: string, specs: SkillSpec[]): Promise<void> {
   const run_ = async () => {
-    const dir = cacheDir(slug);
+    const dir = cacheDir(slug, specs);
     const stamp = join(dir, "installed.json");
     if (existsSync(stamp) && readFileSync(stamp, "utf8") === key(specs)) return;
     rmSync(dir, { recursive: true, force: true });
@@ -77,8 +84,8 @@ function readOwned(slug: string, workspace: string): string[] {
 /** True if HQ has put skills into this folder before (so a now-empty stack still cleans them up). */
 export const hasHqSkills = (slug: string, workspace: string) => readOwned(slug, workspace).length > 0;
 
-/** Copies the cached skills into an agent's folder and removes ones HQ added before that the stack dropped. */
-export async function syncSkillsInto(slug: string, workspace: string): Promise<string[]> {
+/** Copies the agent's skills into its folder and removes ones HQ added before that are no longer chosen. */
+export async function syncSkillsInto(slug: string, workspace: string, specs: SkillSpec[], local: LocalSkill[] = [], keepOld = false): Promise<string[]> {
   const before = readOwned(slug, workspace);
   const tracked = async (rel: string) => (await run("git", ["ls-files", "--error-unmatch", rel], { cwd: workspace })).ok;
   const inside = (rel: string) => SAFE.test(rel) && resolve(workspace, rel).startsWith(resolve(workspace) + sep);
@@ -92,22 +99,29 @@ export async function syncSkillsInto(slug: string, workspace: string): Promise<s
     }
   };
   for (const sub of AGENT_DIRS) {
-    const from = join(cacheDir(slug), sub);
-    if (!existsSync(from)) continue;
+    const from = join(cacheDir(slug, specs), sub);
+    // Registry skills first, then the team's own (which win over a registry skill with the same name).
+    const sources = [...(specs.length && existsSync(from) ? readdirSync(from).map((name) => ({ name, dir: join(from, name) })) : []), ...local];
+    if (!sources.length) continue;
     agentMkdir(workspace, sub); // refuses if .claude, .agents or skills is a symlink
-    for (const name of readdirSync(from)) {
+    for (const { name, dir } of sources) {
       const rel = `${sub}/${name}`;
       if (!inside(rel)) continue;
       // Never touch a skill the repo commits, or one that's already there and isn't HQ's.
       if (await tracked(rel)) continue;
-      if (there(rel) && !before.includes(rel)) continue;
+      if (there(rel) && !before.includes(rel) && !now.includes(rel)) continue;
       agentRemove(workspace, rel); // removes a symlink itself, never its target
-      cpSync(join(from, name), agentPath(workspace, rel), { recursive: true });
-      now.push(rel);
+      cpSync(dir, agentPath(workspace, rel), { recursive: true, dereference: false });
+      if (!now.includes(rel)) now.push(rel);
     }
   }
   for (const rel of before) {
     if (now.includes(rel) || !inside(rel) || (await tracked(rel))) continue;
+    // The registry couldn't be reached: keep what the agent had rather than take it away.
+    if (keepOld) {
+      now.push(rel);
+      continue;
+    }
     try {
       agentRemove(workspace, rel);
     } catch {
@@ -121,11 +135,18 @@ export async function syncSkillsInto(slug: string, workspace: string): Promise<s
 }
 
 /** Install (if needed) and copy into the workspace. Never fails the agent's start. */
-export async function prepareSkills(slug: string, workspace: string, specs: SkillSpec[]): Promise<{ count: number; error: string | null }> {
+export async function prepareSkills(slug: string, workspace: string, specs: SkillSpec[], local: LocalSkill[] = []): Promise<{ count: number; error: string | null }> {
+  let error: string | null = null;
   try {
     await ensureSkillCache(slug, specs);
-    const copied = await syncSkillsInto(slug, workspace);
-    return { count: copied.filter((p) => p.startsWith(".claude/")).length, error: null };
+  } catch (err) {
+    // The registry skills failed; the team's own skills are still copied.
+    error = err instanceof Error ? err.message : String(err);
+    log.warn(`skills: ${error}`);
+  }
+  try {
+    const copied = await syncSkillsInto(slug, workspace, specs, local, !!error);
+    return { count: copied.filter((p) => p.startsWith(".claude/")).length, error };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     log.warn(`skills: ${msg}`);

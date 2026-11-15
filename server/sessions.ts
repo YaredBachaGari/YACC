@@ -5,7 +5,8 @@
 import { spawn as spawnPty, type IPty } from "@lydell/node-pty";
 import { existsSync, rmSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { stackSkills } from "../src/data/stack";
+import { projectSkillsFor, skillSpecsFor } from "../src/data/toolkits";
+import { listProjectSkills, projectSkillSources } from "./projectSkills";
 import { hasHqSkills, prepareSkills } from "./skills";
 import { resolve, sep } from "node:path";
 import { CLI_LABEL, HOST_TERMINAL, type AgentCli, type SetupCheckId, type WorkspaceInfo } from "../src/data/types";
@@ -145,13 +146,20 @@ export class Sessions {
       // App variables reach the agent in sandbox mode and in Local mode with tmux (not Local on Windows).
       const hasEnvFile = !!this.envFileFor(id) && (agent.mode === "sandbox" || this.backend.persistent);
       const claudeVersion = hub.snap.setup.checks.find((c) => c.id === "claude" && c.status === "ok")?.detail ?? null;
-      await adapter.writeFiles(dir, agent, hub.snap.config, this.agentToken, { hasEnvFile, memory: this.memoryText?.() ?? "", claudeVersion });
+      // The team's own skills are read from disk at each start, so a hand-made folder is picked up.
+      const projectSkills = listProjectSkills(hub.repo.root);
+      if (JSON.stringify(projectSkills) !== JSON.stringify(hub.snap.projectSkills ?? [])) {
+        hub.snap.projectSkills = projectSkills;
+        hub.emit({ type: "skills.updated", skills: structuredClone(projectSkills) });
+      }
+      await adapter.writeFiles(dir, agent, hub.snap.config, this.agentToken, { hasEnvFile, memory: this.memoryText?.() ?? "", claudeVersion, projectSkills });
       // Whatever teammates have shared so far, so a new hire starts with it.
       this.deliverShared?.(id);
-      const specs = stackSkills(hub.snap.config.stack);
-      if (specs.length || hasHqSkills(hub.slug, dir)) {
+      const specs = skillSpecsFor(agent, hub.snap.config);
+      const local = projectSkillSources(hub.repo.root, projectSkillsFor(agent, hub.snap.config));
+      if (specs.length || local.length || hasHqSkills(hub.slug, dir)) {
         hub.setSession(id, { detail: "Installing agent skills…" });
-        const skills = await prepareSkills(hub.slug, dir, specs);
+        const skills = await prepareSkills(hub.slug, dir, specs, local);
         if (skills.error) hub.activity("session", id, `${agent.name}: some agent skills didn't install (${skills.error.slice(0, 120)}). Starting anyway.`);
       }
       if (!(await this.backend.exists(name))) {

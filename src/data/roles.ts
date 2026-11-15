@@ -4,6 +4,7 @@
 
 import { cleanBudget } from "./models";
 import { cleanAvatar, cleanBio, cleanTheme } from "./profile";
+import { cleanProjectSkills, cleanToolkits } from "./toolkits";
 import { CEO_ID, LEAD_ROLE_ID, PERMISSIONS, type AgentConfig, type HqConfig, type Permission, type RoleConfig } from "./types";
 import { normalizeWorkflow } from "./workflow";
 
@@ -281,5 +282,13 @@ export function normalizeConfig(cfg: HqConfig): string[] {
     if (a.hiredBy && !ids.has(a.hiredBy)) delete a.hiredBy;
     if (!a.temporary) delete a.temporary;
   }
+  // Toolkits and project skills: known ids, roles that still exist (a removed role's line goes; none left = every role).
+  const roleIds = cfg.roles.map((r) => r.id);
+  const kits = cleanToolkits(cfg.toolkits, roleIds);
+  if (kits.length) cfg.toolkits = kits;
+  else delete cfg.toolkits;
+  const own = cleanProjectSkills(cfg.skills, roleIds);
+  if (own.length) cfg.skills = own;
+  else delete cfg.skills;
   return fixed;
 }
