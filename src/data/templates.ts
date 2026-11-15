@@ -127,9 +127,9 @@ export const BUILT_IN_TEMPLATES: Template[] = [
     item: "Piece",
     deliverable: "files",
     stages: [
-      { id: "research", name: "Research", owner: "researcher", gate: "none" },
-      { id: "script", name: "Script", owner: "writer", gate: "review", reviewer: "editor" },
-      { id: "final", name: "Final edit", owner: "editor", gate: "ceo" },
+      { id: "research", name: "Research", owner: "researcher", gate: "none", description: "Sources and notes for the piece are in shared/research/." },
+      { id: "script", name: "Script", owner: "writer", gate: "review", reviewer: "editor", description: "A full draft that meets the brief's length and tone is in shared/scripts/." },
+      { id: "final", name: "Final edit", owner: "editor", gate: "ceo", description: "The script is ready to publish: facts checked, typos fixed." },
     ],
     roles: [
       lead("Producer", "## Studio rules\n- One piece = one topic. Give each piece its audience, length and done-when.\n- Put the channel's audience, tone and length rules in the brief."),
@@ -158,10 +158,10 @@ export const BUILT_IN_TEMPLATES: Template[] = [
     item: "Experiment",
     deliverable: "files",
     stages: [
-      { id: "survey", name: "Survey", owner: "researcher", gate: "none" },
-      { id: "run", name: "Run", owner: "experimenter", gate: "none" },
-      { id: "analyse", name: "Analyse", owner: "analyst", gate: "review", reviewer: LEAD_ROLE_ID },
-      { id: "report", name: "Report", owner: ANY_ROLE, gate: "ceo" },
+      { id: "survey", name: "Survey", owner: "researcher", gate: "none", description: "What is already known, with sources, is in shared/survey/." },
+      { id: "run", name: "Run", owner: "experimenter", gate: "none", description: "The experiment ran as planned and its raw results are saved." },
+      { id: "analyse", name: "Analyse", owner: "analyst", gate: "review", reviewer: LEAD_ROLE_ID, description: "The results answer the question, or say why not." },
+      { id: "report", name: "Report", owner: ANY_ROLE, gate: "ceo", description: "A short report with the answer and how sure we are." },
     ],
     roles: [
       lead("Principal", "## Lab rules\n- State each experiment's question and what result would answer it before it starts.\n- Record decisions about method in the project memory."),

@@ -125,6 +125,8 @@ HQ never stores key values and never reads your env files.
 | Font: Pixel, Clean or Mono | Settings → Project | Right away, in this browser only. The office itself stays pixel. |
 | Review tool | Settings → Workflow | Right away |
 | Agents, roles, CLI, mode | Settings → Team | Next time the agent starts |
+| Who reports to whom | Settings → Org chart | Right away |
+| Stages, who does them, gates, "done when" | Settings → Workflow | When you press Save stages; agents read the new flow the next time they start |
 | CPU and memory | Settings → Sandbox | After **Recreate sandbox** |
 | MCP servers per agent | Settings → MCP | Right away for new servers |
 
@@ -238,6 +240,8 @@ A role is a title, a set of permissions and instructions:
 
 Every agent also has `list_workers`, `get_status`, `list_tasks`, `send_message`, `ask_user` and `request_access`. So any agent can message any other, and any agent can ask the CEO directly.
 
+**The org chart.** **Settings → Org chart** draws the reporting lines as a tree under you. Drag a person onto someone else to change who they report to, or drag a role from the list beside the chart onto someone to add an agent with that role who reports to them; the list also makes new roles. Click a person to change their role or manager from menus instead, or to add someone under them. A move that would put someone above themselves is refused, and Activity says why. The lead always reports to you. In `config.yml` a reporting line is `reportsTo: <agent id>` (or `ceo`) on the agent; left out, it's the lead.
+
 **Hiring.** An agent with `hire` (the lead, by default) adds agents without asking, when no role covers the work or extra work arrives. Three rules bound it: the CEO's headcount limit (`limits.maxAgents`) is never passed; a role created by a hire can take tasks and nothing more; and only agents that were hired can be dismissed by an agent. Agents the CEO added are the CEO's to remove. Each hire and dismissal is shown in Activity with its reason.
 
 **Settings files.** Settings live in `.yacc/config.yml`, and each role's instructions in `.yacc/roles/<role>.md`. The Settings screens write these files, and edits you make by hand are read while HQ runs (Activity says so, or says why an edit was not applied). An old `config.json` is converted on first start and kept as `config.json.bak`.
@@ -300,6 +304,10 @@ Every task goes through the workflow's **stages** in order (`workflow.stages` in
 | `ceo` | It comes to you as an action item: **Approve**, or **Send back** with what to change. |
 | `pull-request` | The owner opens a PR; review and merge on GitHub finish it. Last stage only, and only when finished work is pull requests. |
 
+**The workflow editor.** **Settings → Workflow** draws the stages as a flow, with what must happen between them (a review, a sign-off, your approval or a pull request). Click a stage to edit it, drag stages to reorder them, and add or remove stages; nothing is written until you press **Save stages**. Each card shows who on the team can do the stage. The editor marks what can't work (✕: an unnamed stage, two stages with one name, a pull request that isn't the last stage) and what will make work wait (!: nobody has the role that does or checks a stage yet). Renaming a stage keeps its id, so work already in it stays there.
+
+Each stage can say when it's **done** (`description`, up to 200 characters). The agent doing the stage reads it in its role file, in `get_my_task`, and in the message that hands it the work.
+
 When a stage is finished, HQ hands the work to someone with the next stage's role, preferring whoever did the last stage, then agents that are running and free, and tells them what the last person said. When nobody has that role, the work waits unassigned and the lead is told to assign it or hire. A review never goes to the person who did the work; when nobody can review, it comes to you. When the last stage is finished, the work is done and the lead is told.
 
 ```yaml
@@ -307,7 +315,7 @@ workflow:
   item: Piece            # what the board and agents call one unit of work
   deliverable: files     # or pull-request (needs a GitHub remote)
   stages:
-    - { name: Research, owner: researcher }
+    - { name: Research, owner: researcher, description: Sources and notes are in shared/research/. }
     - { name: Script, owner: writer, gate: review, reviewer: editor }
     - { name: Approve, owner: editor, gate: ceo }
 ```

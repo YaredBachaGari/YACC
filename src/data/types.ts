@@ -252,6 +252,8 @@ export interface StageConfig {
   gate: GateKind;
   /** review / approval gates: the role that checks it. Left out: any role with the permission. */
   reviewer?: string;
+  /** What finishing this stage means ("A draft of 600–900 words in shared/scripts/"). Told to whoever does it. */
+  description?: string;
 }
 
 /** Where finished work goes. pull-request: a branch and PR on GitHub. files: files in the agent's folder. */
@@ -666,6 +668,8 @@ export interface NewAgentInput {
   name: string;
   /** A role id, or a new title (a role is created for it). */
   role: string;
+  /** Who they report to (an agent id or "ceo"). Left out: the lead. */
+  reportsTo?: string;
   cli?: AgentCli;
   model?: string;
   mode: AgentMode;

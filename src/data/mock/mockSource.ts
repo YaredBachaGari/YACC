@@ -3,7 +3,8 @@ import { agentPalette } from "../../theme/tokens";
 import type { OfficeDataSource, OfficeEvent, SimSpeed } from "../source";
 import { stackDomains } from "../stack";
 import { HOST_TERMINAL, LEAD_ROLE_ID, PERMISSIONS, type AccessRequest, AgentConfig, AgentPatch, Board, NewAgentInput, NewRoleInput, OrgPatch, ProjectMemory, ProjectConfig, RolePatch, SandboxSettings, WorkflowPatch } from "../types";
-import { MAX_AGENTS_CEILING, WORKER_BASE_INSTRUCTIONS, findRole, freeRoleId } from "../roles";
+import { MAX_AGENTS_CEILING, WORKER_BASE_INSTRUCTIONS, findRole, freeRoleId, wouldLoop } from "../roles";
+import { nextAgentName } from "../names";
 import { defaultPresetId, presets, type Preset } from "./presets";
 import { Simulation } from "./simulation";
 import * as T from "./terminalScripts";
@@ -218,7 +219,7 @@ export function createMockSource(): OfficeDataSource {
 
     addAgent(input: NewAgentInput) {
       const team = world.snap.config.team;
-      const base = T.slug(input.name) || "agent";
+      const base = T.slug(input.name.trim() || nextAgentName(team.map((a) => a.name))) || "agent";
       let id = base;
       for (let i = 2; team.some((a) => a.id === id); i++) id = `${base}-${i}`;
       const used = new Set(team.map((a) => a.color));
@@ -232,7 +233,7 @@ export function createMockSource(): OfficeDataSource {
         cfg.roles.push(role);
       }
       const agent: AgentConfig = {
-        id, name: input.name.trim() || "Agent", roleId: role.id, reportsTo: lead.id, role: role.title, isLead: false, cli: input.cli ?? "claude",
+        id, name: input.name.trim() || nextAgentName(team.map((a) => a.name)), roleId: role.id, reportsTo: input.reportsTo && (input.reportsTo === "ceo" || world.cfg(input.reportsTo)) ? input.reportsTo : lead.id, role: role.title, isLead: false, cli: input.cli ?? "claude",
         model: input.model ?? "", mode: input.mode, color, skills: ["plan", "review"],
         roleMd: "",
         sandbox: structuredClone(lead.sandbox),
@@ -262,8 +263,12 @@ export function createMockSource(): OfficeDataSource {
       }
       // As on the server: model names don't carry over to another program.
       const switched = patch.cli && patch.cli !== agent.cli && typeof patch.model !== "string";
-      const { budget, avatar, bio, ...rest } = patch;
+      const { budget, avatar, bio, reportsTo, ...rest } = patch;
       Object.assign(agent, rest);
+      if (reportsTo && !agent.isLead && (reportsTo === "ceo" || world.cfg(reportsTo))) {
+        if (wouldLoop(world.snap.config.team, agent.id, reportsTo)) world.activity("config", null, `${agent.name} can't report to ${world.cfg(reportsTo)?.name}: they already report to ${agent.name}.`);
+        else agent.reportsTo = reportsTo;
+      }
       if (avatar !== undefined) {
         const next = { ...(avatar ?? {}), ...(agent.avatar?.image ? { image: agent.avatar.image } : {}) };
         if (Object.keys(next).length) agent.avatar = next;
