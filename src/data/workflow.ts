@@ -31,7 +31,7 @@ export function describeFlow(cfg: Pick<HqConfig, "workflow" | "roles" | "ceo">):
         s.gate === "ceo" ? `, then ${cfg.ceo.name} approves` :
         s.gate === "pull-request" ? ", ends with a pull request reviewed and merged on GitHub" :
         `, then ${s.reviewer ? roleTitle(s.reviewer) : `a teammate who can ${s.gate === "review" ? "review" : "approve"}`} ${s.gate === "review" ? "reviews" : "signs off"}`;
-      return `${i + 1}. ${s.name}: ${roleTitle(s.owner)}${gate}`;
+      return `${i + 1}. ${s.name}: ${roleTitle(s.owner)}${gate}${s.description ? `. Done when: ${s.description}` : ""}`;
     })
     .join("\n");
 }
@@ -68,6 +68,8 @@ export function normalizeWorkflow(cfg: HqConfig): string[] {
       gate = "review";
     }
     const stage: StageConfig = { id, name, owner, gate };
+    const description = String(s.description ?? "").replace(/\s+/g, " ").trim().slice(0, STAGE_DESCRIPTION_MAX);
+    if (description) stage.description = description;
     if ((gate === "review" || gate === "approval") && s.reviewer) {
       if (roleIds.has(s.reviewer)) stage.reviewer = s.reviewer;
       else fixed.push(`Stage "${name}" named the reviewer role "${s.reviewer}", which doesn't exist; anyone who can ${gate === "review" ? "review" : "approve"} checks it now.`);
@@ -75,6 +77,67 @@ export function normalizeWorkflow(cfg: HqConfig): string[] {
     return stage;
   });
   return fixed;
+}
+
+export const STAGE_DESCRIPTION_MAX = 200;
+export const MAX_STAGES = 12;
+
+/** A new stage's id: from its name, unlike any other stage's. Existing stages keep theirs when renamed, so their work stays put. */
+export function newStageId(stages: Pick<StageConfig, "id">[], name: string): string {
+  const base = /[a-z0-9]/i.test(name) ? roleSlug(name) : "stage";
+  let id = base;
+  for (let n = 2; stages.some((s) => s.id === id); n++) id = `${base}-${n}`;
+  return id;
+}
+
+export interface StageIssue {
+  /** The stage it's about (its index), or null for the whole flow. */
+  stage: number | null;
+  /** error: can't be saved as is. warn: saves, but work may stall there. */
+  level: "error" | "warn";
+  text: string;
+}
+
+/**
+ * What the workflow editor points out before saving: things that can't work (errors) and
+ * stages where work would wait because nobody on the team can do or check it (warnings).
+ */
+export function stageIssues(cfg: Pick<HqConfig, "roles" | "team" | "ceo">, wf: Pick<WorkflowConfig, "deliverable">, stages: StageConfig[]): StageIssue[] {
+  const out: StageIssue[] = [];
+  const role = (id: string) => cfg.roles.find((r) => r.id === id);
+  const holders = (id: string) => cfg.team.filter((a) => a.roleId === id);
+  const can = (perm: "work" | "review" | "approve") => cfg.team.filter((a) => role(a.roleId)?.can.includes(perm));
+  if (!stages.length) out.push({ stage: null, level: "error", text: "The workflow needs at least one stage." });
+  if (stages.length > MAX_STAGES) out.push({ stage: null, level: "error", text: `At most ${MAX_STAGES} stages.` });
+  const names = new Map<string, number>();
+  stages.forEach((s, i) => {
+    const name = s.name.trim();
+    if (!name) out.push({ stage: i, level: "error", text: `Stage ${i + 1} needs a name.` });
+    else if (names.has(name.toLowerCase())) out.push({ stage: i, level: "error", text: `Two stages are called "${name}".` });
+    names.set(name.toLowerCase(), i);
+    const label = name || `Stage ${i + 1}`;
+    if (s.gate === "pull-request" && (wf.deliverable !== "pull-request" || i !== stages.length - 1))
+      out.push({ stage: i, level: "error", text: `${label}: a pull request can only end the last stage of a GitHub workflow.` });
+    if (s.owner === ANY_ROLE) {
+      if (!can("work").length) out.push({ stage: i, level: "warn", text: `${label}: nobody on the team takes tasks yet.` });
+    } else if (!role(s.owner)) {
+      out.push({ stage: i, level: "error", text: `${label}: the role "${s.owner}" doesn't exist.` });
+    } else if (!holders(s.owner).length) {
+      out.push({ stage: i, level: "warn", text: `${label}: nobody is a ${role(s.owner)!.title} yet. Work will wait there until the lead assigns it or hires one.` });
+    }
+    if (s.gate === "review" || s.gate === "approval") {
+      const perm = s.gate === "review" ? "review" : "approve";
+      if (s.reviewer) {
+        const r = role(s.reviewer);
+        if (!r) out.push({ stage: i, level: "error", text: `${label}: the role "${s.reviewer}" doesn't exist.` });
+        else if (!holders(s.reviewer).length) out.push({ stage: i, level: "warn", text: `${label}: nobody is a ${r.title} yet to ${perm} it.` });
+      } else if (!can(perm).length) {
+        out.push({ stage: i, level: "warn", text: `${label}: nobody on the team can ${perm} yet (give a role the ${perm} permission).` });
+      }
+    }
+    if ((s.description ?? "").length > STAGE_DESCRIPTION_MAX) out.push({ stage: i, level: "error", text: `${label}: "done when" is longer than ${STAGE_DESCRIPTION_MAX} characters.` });
+  });
+  return out;
 }
 
 /** Puts every task in a stage that exists. Returns the ids of tasks it moved. */
