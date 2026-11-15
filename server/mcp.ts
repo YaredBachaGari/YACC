@@ -64,7 +64,7 @@ function buildServer(hub: Hub, planner: Planner, team: Team, extras: McpExtras, 
   server.registerTool(
     "list_workers",
     {
-      description: "The team: each agent's id, name, role, who they report to, whether they are running, and what they are doing now. Pass role to see only one role.",
+      description: "The team: each agent's id, name, role, short bio, who they report to, whether they are running, and what they are doing now. Pass role to see only one role.",
       inputSchema: { role: z.string().optional().describe("A role id or title, e.g. developer") },
     },
     guard(({ role }: { role?: string }) => {
@@ -77,6 +77,7 @@ function buildServer(hub: Hub, planner: Planner, team: Team, extras: McpExtras, 
             const st = hub.status(a.id);
             return {
               id: a.id, name: a.name, role: a.role, roleId: a.roleId, lead: a.isLead, reportsTo: managerName(c, a), you: a.id === me,
+              ...(a.bio ? { bio: a.bio } : {}),
               ...(a.temporary ? { temporary: true } : {}),
               running: st?.session.state === "running", state: st?.state, task: st?.currentTaskId ?? null,
               // Free = can take a task now: running, its role does tasks, and it has none.

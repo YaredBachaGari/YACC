@@ -38,6 +38,8 @@ jobs:
         run: npx tsx scripts/models-test.ts
       - name: Usage, budgets, routing and fallback
         run: npx tsx scripts/usage-test.ts
+      - name: Profiles and office themes
+        run: npx tsx scripts/profiles-test.ts
       - name: Session backends (fake agent)
         run: npx tsx scripts/session-backend-test.ts
       - name: Agent clones (line endings)

@@ -30,7 +30,7 @@ export function AgentDrawer({ id, initialTab }: { id: string; initialTab?: Agent
   return (
     <>
       <DrawerHeader>
-        <Portrait color={agent.color} lead={agent.isLead} size={36} />
+        <Portrait color={agent.color} lead={agent.isLead} size={agent.bio ? 48 : 36} who={agent} />
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <b className="text-[18px]">{agent.name}</b>
@@ -39,6 +39,11 @@ export function AgentDrawer({ id, initialTab }: { id: string; initialTab?: Agent
           <div className="truncate font-term text-[17px] text-muted">
             {agent.role} · {status.using ? `${describePick(status.using)} ↻` : `${CLI_LABEL[agent.cli]}${agent.model ? ` ${agent.model}` : ""}`} · {agent.mode === "sandbox" ? "Docker Sandbox" : "Local mode"}
           </div>
+          {agent.bio && (
+            <p className="line-clamp-2 text-[13px] leading-snug text-ink/80" title={agent.bio}>
+              {agent.bio}
+            </p>
+          )}
         </div>
       </DrawerHeader>
       <SessionBar agent={agent} status={status} />

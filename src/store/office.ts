@@ -204,6 +204,7 @@ export const officeActions = {
   useOwnModel: source.useOwnModel.bind(source),
   removeRole: source.removeRole.bind(source),
   updateOrg: source.updateOrg.bind(source),
+  setAvatarImage: source.setAvatarImage.bind(source),
   updateWorkflow: source.updateWorkflow.bind(source),
   updateProject: source.updateProject.bind(source),
   createBoard: source.createBoard.bind(source),

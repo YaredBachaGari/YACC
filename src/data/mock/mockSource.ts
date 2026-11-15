@@ -13,6 +13,10 @@ const TICK_MS = 50;
 const TERM_MS = 30;
 
 
+/** Demo pictures: name → data URL (the real HQ writes them to .yacc/avatars/). */
+const mockAvatars = new Map<string, string>();
+let mockAvatarSeq = 1;
+
 export function createMockSource(): OfficeDataSource {
   let presetId = defaultPresetId;
   let world = new World(findPreset(presetId));
@@ -258,8 +262,17 @@ export function createMockSource(): OfficeDataSource {
       }
       // As on the server: model names don't carry over to another program.
       const switched = patch.cli && patch.cli !== agent.cli && typeof patch.model !== "string";
-      const { budget, ...rest } = patch;
+      const { budget, avatar, bio, ...rest } = patch;
       Object.assign(agent, rest);
+      if (avatar !== undefined) {
+        const next = { ...(avatar ?? {}), ...(agent.avatar?.image ? { image: agent.avatar.image } : {}) };
+        if (Object.keys(next).length) agent.avatar = next;
+        else delete agent.avatar;
+      }
+      if (typeof bio === "string") {
+        if (bio.trim()) agent.bio = bio.trim().slice(0, 280);
+        else delete agent.bio;
+      }
       if (budget !== undefined) {
         if (budget) agent.budget = budget;
         else delete agent.budget;
@@ -490,6 +503,11 @@ export function createMockSource(): OfficeDataSource {
     updateOrg(patch: OrgPatch) {
       const cfg = world.snap.config;
       if (patch.ceoName?.trim()) cfg.ceo.name = patch.ceoName.trim();
+      if (patch.ceoAvatar !== undefined) {
+        const next = { ...(patch.ceoAvatar ?? {}), ...(cfg.ceo.avatar?.image ? { image: cfg.ceo.avatar.image } : {}) };
+        if (Object.keys(next).length) cfg.ceo.avatar = next;
+        else delete cfg.ceo.avatar;
+      }
       if (patch.autonomy) cfg.autonomy = { ...cfg.autonomy, ...patch.autonomy };
       if (typeof patch.maxAgents === "number") cfg.limits.maxAgents = Math.max(cfg.team.length, 2, Math.min(MAX_AGENTS_CEILING, Math.round(patch.maxAgents)));
       if (patch.budget !== undefined) {
@@ -497,6 +515,28 @@ export function createMockSource(): OfficeDataSource {
         else delete cfg.limits.budget;
       }
       world.configChanged();
+    },
+
+    setAvatarImage(who: string, png: string | null) {
+      const cfg = world.snap.config;
+      const holder = who === "ceo" ? cfg.ceo : world.cfg(who);
+      if (!holder) return;
+      if (png === null) {
+        if (!holder.avatar?.image) return;
+        const { image: _gone, ...look } = holder.avatar;
+        if (Object.keys(look).length) holder.avatar = look;
+        else delete holder.avatar;
+      } else {
+        // The demo keeps pictures in memory, under the kind of name HQ would give the file.
+        const image = `avatars/${who}-${(mockAvatarSeq++).toString(16).padStart(8, "0")}.png`;
+        mockAvatars.set(image, png.startsWith("data:") ? png : `data:image/png;base64,${png}`);
+        holder.avatar = { ...(holder.avatar ?? {}), image };
+      }
+      world.configChanged();
+    },
+
+    avatarUrl(image: string) {
+      return mockAvatars.get(image) ?? "";
     },
 
     updateWorkflow(patch: WorkflowPatch) {

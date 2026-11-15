@@ -2,6 +2,7 @@
 //   GET  /ws?token=…            browser WebSocket (browser token)
 //   POST /hook/<agent>/<event>  Claude Code hooks (agent token)
 //   POST /otlp/<agent>/<token>/v1/metrics|logs   token use from agent programs (OpenTelemetry)
+//   GET  /avatars/<file>?token=…   uploaded profile pictures (browser token)
 //   GET  /api/health
 //   GET  /*                     the built UI (dist/), when present
 
@@ -21,6 +22,7 @@ import type { Team } from "./team";
 import type { McpExtras } from "./mcp";
 import { log } from "./lib/log";
 import { decodeLogs, decodeMetrics } from "./otlp";
+import { readAvatar } from "./avatars";
 import type { Usage } from "./usage";
 
 const MIME: Record<string, string> = {
@@ -141,6 +143,15 @@ export function startHttp(o: Options) {
       } catch {
         return res.headersSent ? void res.end() : send(res, 400, "bad request");
       }
+    }
+
+    if (req.method === "GET" && url.pathname.startsWith("/avatars/")) {
+      if (!safeEqual(url.searchParams.get("token") ?? "", o.browserToken)) return send(res, 401, "unauthorized");
+      const png = readAvatar(o.hub.repo.root, decodeURIComponent(url.pathname.slice("/avatars/".length)));
+      if (!png) return send(res, 404, "not found");
+      // File names change with every upload, so a picture never changes under its name.
+      res.writeHead(200, { "Content-Type": "image/png", "Cache-Control": "private, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff" });
+      return void res.end(png);
     }
 
     if (url.pathname === "/api/health") return send(res, 200, JSON.stringify({ ok: true }), "application/json");

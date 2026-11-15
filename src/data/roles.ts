@@ -3,6 +3,7 @@
 // that lives in each role's instructions.
 
 import { cleanBudget } from "./models";
+import { cleanAvatar, cleanBio, cleanTheme } from "./profile";
 import { CEO_ID, LEAD_ROLE_ID, PERMISSIONS, type AgentConfig, type HqConfig, type Permission, type RoleConfig } from "./types";
 import { normalizeWorkflow } from "./workflow";
 
@@ -123,7 +124,13 @@ const cleanPermissions = (list: unknown): Permission[] => PERMISSIONS.filter((p)
  */
 export function normalizeConfig(cfg: HqConfig): string[] {
   const fixed: string[] = [];
-  cfg.ceo = { name: (cfg.ceo?.name ?? "").trim().slice(0, 40) || DEFAULT_CEO_NAME };
+  const ceoAvatar = cleanAvatar(cfg.ceo?.avatar);
+  cfg.ceo = { name: (cfg.ceo?.name ?? "").trim().slice(0, 40) || DEFAULT_CEO_NAME, ...(ceoAvatar ? { avatar: ceoAvatar } : {}) };
+  if (cfg.project) {
+    const theme = cleanTheme(cfg.project.theme);
+    if (theme) cfg.project.theme = theme;
+    else delete cfg.project.theme;
+  }
   const max = Number(cfg.limits?.maxAgents);
   const budget = cleanBudget(cfg.limits?.budget);
   cfg.limits = { maxAgents: Number.isFinite(max) ? Math.min(MAX_AGENTS_CEILING, Math.max(2, Math.round(max))) : DEFAULT_MAX_AGENTS, ...(budget ? { budget } : {}) };
@@ -161,6 +168,12 @@ export function normalizeConfig(cfg: HqConfig): string[] {
   // Agents: a known role, exactly one lead.
   let leadAgent: AgentConfig | undefined;
   for (const a of cfg.team) {
+    const avatar = cleanAvatar(a.avatar);
+    if (avatar) a.avatar = avatar;
+    else delete a.avatar;
+    const bio = cleanBio(a.bio);
+    if (bio) a.bio = bio;
+    else delete a.bio;
     if (!cfg.roles.some((r) => r.id === a.roleId)) {
       const to = fallback ?? developerRole();
       if (!cfg.roles.includes(to)) cfg.roles.push(to);

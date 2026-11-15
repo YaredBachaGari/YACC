@@ -140,6 +140,8 @@ export interface RoleConfig {
 /** The human. Always the head of the org chart. */
 export interface CeoConfig {
   name: string; // shown in the org chart and to agents
+  /** Your picture or look in the office. */
+  avatar?: AvatarConfig;
 }
 
 /**
@@ -183,6 +185,10 @@ export interface AgentConfig {
   model: string; // optional start model ("" = the CLI's default; users can switch with /model)
   mode: AgentMode;
   color: string; // hex, used for the robot, owner dots and chips
+  /** Profile picture or illustrated look (Settings → Team → Profile). */
+  avatar?: AvatarConfig;
+  /** A line or two about this agent, shown to you and to teammates. */
+  bio?: string;
   skills: string[];
   roleMd: string; // a personal note for this agent, added to its role file
   sandbox: SandboxSettings;
@@ -274,6 +280,24 @@ export interface ProjectConfig {
   hqPort: number; // port sandboxes use to reach HQ via host.docker.internal
   exportPlan?: boolean; // also write the plan to docs/plan.md
   officeName?: string; // the sign on the office wall; empty = "YACC"
+  /** The modern office's look: palette, floor, wall and furniture. Templates pick one; default "modern". */
+  theme?: ThemeId;
+}
+
+export type ThemeId = "modern" | "studio" | "lab" | "loft" | "night";
+export const THEME_IDS = ["modern", "studio", "lab", "loft", "night"] as const satisfies readonly ThemeId[];
+
+/**
+ * How someone looks in the office. A picture you uploaded (kept in the repo under .yacc/avatars/) wins;
+ * otherwise an illustrated person built from these choices, each falling back to one picked from their id.
+ */
+export interface AvatarConfig {
+  skin?: number; // index into the skin tones
+  hair?: number; // index into the hair colours
+  style?: number; // 0 short, 1 long, 2 bun, 3 curly, 4 buzz
+  glasses?: boolean;
+  /** An uploaded picture, relative to .yacc/ (e.g. avatars/ada.png). */
+  image?: string;
 }
 
 export interface HqConfig {
@@ -661,8 +685,8 @@ export interface WelcomeInput {
 }
 
 export type AgentPatch = Partial<
-  Pick<AgentConfig, "name" | "roleId" | "reportsTo" | "cli" | "model" | "mode" | "color" | "skills" | "roleMd" | "workspacePath" | "desk">
-> & { budget?: Budget | null };
+  Pick<AgentConfig, "name" | "roleId" | "reportsTo" | "cli" | "model" | "mode" | "color" | "skills" | "roleMd" | "workspacePath" | "desk" | "bio">
+> & { budget?: Budget | null; avatar?: AvatarConfig | null };
 
 export type RolePatch = Partial<Pick<RoleConfig, "title" | "can" | "instructions" | "cli" | "model" | "tools">>;
 
@@ -674,6 +698,8 @@ export interface NewRoleInput {
 
 export interface OrgPatch {
   ceoName?: string;
+  /** Your look in the office (a picture is set with setAvatarImage). Null: picked for you. */
+  ceoAvatar?: AvatarConfig | null;
   maxAgents?: number;
   autonomy?: Partial<AutonomyConfig>;
   /** The team's budget; null removes it. */

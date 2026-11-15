@@ -1,8 +1,11 @@
 // Small shared HUD pieces.
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { AgentState, ReviewState } from "../data/types";
+import type { AgentState, AvatarConfig, ReviewState } from "../data/types";
 import { robotCanvases } from "../office/draw/robots";
+import { drawHead, lookFor } from "../officeModern/avatar";
+import { usePhoto } from "../store/photos";
+import { useUi } from "../store/ui";
 import { reviewStyle, stateStyle } from "../theme/tokens";
 
 export function StateChip({ state, blink = true }: { state: AgentState; blink?: boolean }) {
@@ -24,19 +27,48 @@ export function ReviewChip({ review, merged }: { review: ReviewState; merged?: b
 }
 
 /** Pixel robot portrait drawn from the same sprite as the office. */
-export function Portrait({ color, lead, size = 40 }: { color: string; lead: boolean; size?: number }) {
+/**
+ * Someone's picture in the panels. With `who`, their face as the modern office draws it
+ * (their uploaded picture, or their look); without it (or in the classic office), their robot.
+ */
+export function Portrait({ color, lead, size = 40, who, forceFace }: { color: string; lead: boolean; size?: number; who?: { id: string; avatar?: AvatarConfig }; forceFace?: boolean }) {
   const ref = useRef<HTMLCanvasElement>(null);
+  const classic = useUi((s) => s.officeStyle === "classic");
+  const photo = usePhoto(who?.avatar);
+  const face = !!who && (!classic || !!photo || !!forceFace);
+  const px = Math.round(size * Math.min(3, window.devicePixelRatio || 1));
+  const look = who ? JSON.stringify(who.avatar ?? {}) : "";
   useEffect(() => {
     const c = ref.current;
     const g = c?.getContext("2d");
     if (!c || !g) return;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, c.width, c.height);
+    if (face && who) {
+      g.imageSmoothingEnabled = true;
+      drawHead(g, c.width, color, lookFor(who.id, who.avatar), photo);
+      return;
+    }
     const src = robotCanvases(color, lead).front;
     g.imageSmoothingEnabled = false;
-    g.clearRect(0, 0, 16, 16);
     g.drawImage(src, 2, 1);
-  }, [color, lead]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [color, lead, face, photo, who?.id, look, px]);
+  if (face)
+    return (
+      <canvas
+        key="face"
+        ref={ref}
+        width={px}
+        height={px}
+        className="shrink-0 rounded-full border-[3px] border-ink"
+        style={{ width: size, height: size, background: "#e8efe6" }}
+        aria-hidden
+      />
+    );
   return (
     <canvas
+      key="robot"
       ref={ref}
       width={16}
       height={16}

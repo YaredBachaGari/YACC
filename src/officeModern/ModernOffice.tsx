@@ -1,7 +1,9 @@
 import { useEffect, useRef } from "react";
 import { useOffice } from "../store/office";
 import { ui, useUi } from "../store/ui";
-import { drawCeoOffice, drawDesks, drawLeadArea, drawLounge, drawMeeting, drawMessages, drawShell, type Frame } from "./draw";
+import { drawCeoOffice, drawDesks, drawLeadArea, drawLounge, drawMeeting, drawMessages, drawShell, setTheme, type Frame } from "./draw";
+import { themeOf } from "./themes";
+import { photoFor } from "../store/photos";
 import { inside, modernLayout, type ModernLayout, type Rect } from "./layout";
 
 const MIN_ZOOM = 0.25;
@@ -88,6 +90,8 @@ export function ModernOffice() {
           target = null;
         }
       }
+      const theme = themeOf(snap.config.project.theme);
+      setTheme(theme);
       const dpr = window.devicePixelRatio || 1;
       const w = el.clientWidth;
       const h = el.clientHeight;
@@ -96,13 +100,13 @@ export function ModernOffice() {
         canvas.height = Math.round(h * dpr);
       }
       g.setTransform(1, 0, 0, 1, 0, 0);
-      g.fillStyle = "#cfd8cf";
+      g.fillStyle = theme.outside;
       g.fillRect(0, 0, canvas.width, canvas.height);
       g.setTransform(dpr * cam.zoom, 0, 0, dpr * cam.zoom, -cam.x * dpr * cam.zoom, -cam.y * dpr * cam.zoom);
-      const f: Frame = { t: (now - start) / 1000, snap, hover, reducedMotion };
+      const f: Frame = { t: (now - start) / 1000, snap, hover, reducedMotion, photo: (a) => photoFor(a) };
       const L = layout;
       // outside the building
-      g.fillStyle = "#bfcbbd";
+      g.fillStyle = theme.outside;
       g.fillRect(-2000, -2000, L.w + 4000, L.h + 4000);
       g.fillStyle = "rgba(43,36,51,0.18)";
       g.beginPath();

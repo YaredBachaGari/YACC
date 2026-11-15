@@ -91,6 +91,8 @@ export function createWsSource(token: string): OfficeDataSource {
     updateRole: (id, patch) => send("updateRole", id, patch),
     removeRole: (id) => send("removeRole", id),
     updateOrg: (patch) => send("updateOrg", patch),
+    setAvatarImage: (who, png) => send("setAvatarImage", who, png),
+    avatarUrl: (image) => `/avatars/${encodeURIComponent(image.replace(/^avatars\//, ""))}?token=${encodeURIComponent(token)}`,
     setProviderAuth: (provider, auth) => send("setProviderAuth", provider, auth),
     setRouting: (routing) => send("setRouting", routing),
     useOwnModel: (agentId) => send("useOwnModel", agentId),

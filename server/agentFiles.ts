@@ -167,6 +167,7 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
     "",
     `You are ${agent.name}, ${agent.isLead ? "the lead" : `${/^[aeiou]/i.test(title) ? "an" : "a"} ${title}`} on the ${cfg.project.name} team. You report to ${managerName(cfg, agent)}${agent.reportsTo === CEO_ID ? ", the CEO (the human)" : ""}.`,
     "",
+    ...(agent.bio?.trim() ? ["## About you", agent.bio.trim(), ""] : []),
     ...(role?.instructions.trim() ? [`## Your role: ${title}`, role.instructions.trim(), ""] : []),
     ...(agent.roleMd.trim() ? ["## Notes for you", agent.roleMd.trim(), ""] : []),
     "## Team",

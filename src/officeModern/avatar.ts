@@ -1,10 +1,11 @@
 // Seated people for the modern office: flat illustration, facing you across their desk.
 // Looks are picked from the agent's id, so each agent always looks the same.
 
-import type { AgentState } from "../data/types";
+import type { AgentState, AvatarConfig } from "../data/types";
 
-const SKIN = ["#f6d2b0", "#eab98c", "#d29a6a", "#b0764a", "#8a5634", "#5e3a22"];
-const HAIR = ["#2a1c14", "#4b2e1c", "#7a4a26", "#b5793c", "#d8b47a", "#1d1d24", "#8b8b93", "#a0442e"];
+export const SKIN = ["#f6d2b0", "#eab98c", "#d29a6a", "#b0764a", "#8a5634", "#5e3a22"];
+export const HAIR = ["#2a1c14", "#4b2e1c", "#7a4a26", "#b5793c", "#d8b47a", "#1d1d24", "#8b8b93", "#a0442e"];
+export const HAIR_STYLES = ["Short", "Long", "Bun", "Curly", "Buzz"];
 
 export interface Look {
   skin: string;
@@ -19,10 +20,33 @@ function hash(s: string): number {
   return h >>> 0;
 }
 
-export function lookFor(id: string): Look {
+/** How someone looks: their profile's choices, and for anything not chosen, one picked from their id. */
+export function lookFor(id: string, avatar?: AvatarConfig): Look {
   const h = hash(id);
-  return { skin: SKIN[h % SKIN.length], hair: HAIR[(h >>> 4) % HAIR.length], style: (h >>> 8) % 5, glasses: (h >>> 12) % 4 === 0 };
+  const pick = <T>(list: T[], i: number | undefined, fallback: number) => list[i !== undefined && i >= 0 && i < list.length ? i : fallback];
+  return {
+    skin: pick(SKIN, avatar?.skin, h % SKIN.length),
+    hair: pick(HAIR, avatar?.hair, (h >>> 4) % HAIR.length),
+    style: avatar?.style !== undefined && avatar.style >= 0 && avatar.style < HAIR_STYLES.length ? avatar.style : (h >>> 8) % 5,
+    glasses: avatar?.glasses ?? (h >>> 12) % 4 === 0,
+  };
 }
+
+/** The built-in set for the avatar picker: a varied dozen. */
+export const AVATAR_PRESETS: AvatarConfig[] = [
+  { skin: 0, hair: 3, style: 1, glasses: false },
+  { skin: 1, hair: 0, style: 0, glasses: true },
+  { skin: 2, hair: 5, style: 3, glasses: false },
+  { skin: 3, hair: 1, style: 2, glasses: false },
+  { skin: 4, hair: 5, style: 4, glasses: false },
+  { skin: 5, hair: 0, style: 3, glasses: true },
+  { skin: 0, hair: 4, style: 2, glasses: true },
+  { skin: 1, hair: 7, style: 1, glasses: false },
+  { skin: 2, hair: 2, style: 0, glasses: false },
+  { skin: 3, hair: 6, style: 4, glasses: true },
+  { skin: 4, hair: 1, style: 1, glasses: false },
+  { skin: 5, hair: 5, style: 0, glasses: false },
+];
 
 /** Darker or lighter version of a #rrggbb colour (amount -1..1). */
 export function shade(hex: string, amount: number): string {
@@ -42,6 +66,8 @@ export interface AvatarPose {
   badge?: "lead" | "ceo";
   /** The person is at a desk with a laptop: hands on it when working. */
   typing?: boolean;
+  /** An uploaded picture, drawn round in place of the illustrated head. */
+  photo?: CanvasImageSource | null;
 }
 
 /** Draws a seated person. (cx, sy) is the middle of the shoulders, just above the desk edge. */
@@ -84,6 +110,12 @@ export function drawAvatar(g: CanvasRenderingContext2D, cx: number, sy: number, 
   g.fillStyle = shade(look.skin, -0.12);
   g.fillRect(cx - 5, y - 12, 10, 10);
   const hy = y - 30;
+  if (pose.photo) {
+    drawPhotoHead(g, cx, hy, 21, pose.photo);
+    arms(g, cx, y, shirt, look, pose);
+    g.restore();
+    return;
+  }
   if (look.style === 1) {
     // long hair behind the head
     g.fillStyle = look.hair;
@@ -124,7 +156,41 @@ export function drawAvatar(g: CanvasRenderingContext2D, cx: number, sy: number, 
   dot(g, cx - 11, hy + 7, 3);
   dot(g, cx + 11, hy + 7, 3);
 
-  // arms
+  arms(g, cx, y, shirt, look, pose);
+  g.restore();
+}
+
+/** A picture clipped to a circle with a white rim (a profile photo as someone's head). */
+export function drawPhotoHead(g: CanvasRenderingContext2D, cx: number, cy: number, r: number, photo: CanvasImageSource) {
+  g.save();
+  g.fillStyle = "#ffffff";
+  dot(g, cx, cy, r + 2);
+  g.beginPath();
+  g.arc(cx, cy, r, 0, Math.PI * 2);
+  g.clip();
+  g.drawImage(photo, cx - r, cy - r, r * 2, r * 2);
+  g.restore();
+}
+
+/** Just the head and shoulders, for portraits in the panels (no animation). */
+export function drawHead(g: CanvasRenderingContext2D, size: number, shirt: string, look: Look, photo?: CanvasImageSource | null) {
+  // Head and shoulders fill a 72-unit square: hair top at ~2, shoulders run off the bottom.
+  const s = size / 72;
+  g.save();
+  g.scale(s, s);
+  if (photo) {
+    g.beginPath();
+    g.arc(36, 36, 36, 0, Math.PI * 2);
+    g.clip();
+    g.drawImage(photo, 0, 0, 72, 72);
+  } else {
+    drawAvatar(g, 36, 60, shirt, look, { state: "idle", t: 0, seed: 0 });
+  }
+  g.restore();
+}
+
+function arms(g: CanvasRenderingContext2D, cx: number, y: number, shirt: string, look: Look, pose: AvatarPose) {
+  const { state, t, seed } = pose;
   g.fillStyle = shade(shirt, -0.08);
   if (state === "needs-input") {
     // a raised hand, waving
@@ -143,7 +209,6 @@ export function drawAvatar(g: CanvasRenderingContext2D, cx: number, sy: number, 
     g.fillStyle = "#c47b4a";
     g.fillRect(cx + 20, y + 16, 8, 3);
   }
-  g.restore();
 }
 
 /** Hands on the laptop keys; drawn after the desk so they sit on top of it. */
