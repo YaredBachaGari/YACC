@@ -85,12 +85,13 @@ export function skillFiles(dir: string): Record<string, string> {
   const out: Record<string, string> = {};
   const walk = (d: string, depth: number) => {
     if (depth > 5 || !existsSync(d)) return;
-    for (const name of readdirSync(d)) {
+    for (const name of readdirSync(d).sort()) {
       const p = join(d, name);
       if (statSync(p).isDirectory()) walk(p, depth + 1);
       else {
         const rel = `skills/${relative(root, p).split(sep).join("/")}`;
-        if (BUNDLE_FILE.test(rel)) out[rel] = readFileSync(p, "utf8");
+        // Line endings as shared: LF (a Windows checkout or editor may have made them CRLF).
+        if (BUNDLE_FILE.test(rel)) out[rel] = readFileSync(p, "utf8").replace(/\r\n/g, "\n");
       }
     }
   };

@@ -28,7 +28,7 @@ out["index.json"] = JSON.stringify({ format: "yacc-gallery", version: 1, templat
 let stale = 0;
 for (const [file, text] of Object.entries(out)) {
   const path = join(root, file);
-  const now = existsSync(path) ? readFileSync(path, "utf8") : "";
+  const now = existsSync(path) ? readFileSync(path, "utf8").replace(/\r\n/g, "\n") : "";
   if (now === text) continue;
   stale++;
   if (check) console.error(`out of date: templates/${file}`);
