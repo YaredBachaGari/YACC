@@ -427,6 +427,11 @@ function world(yaml = STUDIO) {
   }
 }
 
-rmSync(tmp, { recursive: true, force: true });
+// Windows may still hold a file open for a moment (the skills cache); leftovers in the temp folder are harmless.
+try {
+  rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+} catch {
+  /* ignore */
+}
 console.log(`hardening: ${passed} checks passed`);
 void ({} as HqConfig);
