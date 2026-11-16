@@ -7,6 +7,7 @@ export type DrawerState =
   | { kind: "env"; name: string }
   | { kind: "actions" }
   | { kind: "briefings" }
+  | { kind: "channels"; channel?: string }
   | { kind: "terminal" }
   | null;
 
@@ -22,7 +23,7 @@ function savedOfficeStyle(): OfficeStyle {
 }
 
 export type AgentTab = "terminal" | "shell" | "task" | "sandbox" | "messages";
-export type SettingsTab = "team" | "org" | "roles" | "models" | "memory" | "workflow" | "stack" | "mcp" | "sandbox" | "boards" | "project";
+export type SettingsTab = "team" | "org" | "roles" | "schedules" | "models" | "memory" | "workflow" | "stack" | "mcp" | "sandbox" | "boards" | "project";
 
 /** Something in the office the camera can fly to. */
 export type FocusTarget =
@@ -129,6 +130,9 @@ export const ui = {
   closeDrawer() {
     useUi.setState({ drawer: null });
     ui.focus({ kind: "home" });
+  },
+  openChannels(channel?: string) {
+    useUi.setState({ drawer: { kind: "channels", channel } });
   },
   openSettings(tab: SettingsTab = "team", agentId?: string) {
     useUi.setState({ settings: { tab, agentId } });

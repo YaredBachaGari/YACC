@@ -6,6 +6,9 @@ import { agentRead, agentRemove, agentWrite } from "./lib/agentFs";
 import { run } from "./lib/exec";
 import { join } from "node:path";
 import { stackRoleMd } from "../src/data/stack";
+import { toolkitsRoleMd, type ProjectSkillInfo } from "../src/data/toolkits";
+import { messagingOf, messagingRoleMd } from "../src/data/messaging";
+import { schedulesRoleMd } from "../src/data/schedules";
 import { CEO_ID, type AgentConfig, type HqConfig } from "../src/data/types";
 import { can, managerName, roleOf, toolsFor } from "../src/data/roles";
 import { describeFlow } from "../src/data/workflow";
@@ -25,6 +28,8 @@ export interface RoleExtras {
   hasEnvFile?: boolean;
   /** The project memory (brief, recent decisions and lessons), from Memory.forRoleFile(). */
   memory?: string;
+  /** What's in .yacc/skills/ (for the "Your tools" section). */
+  projectSkills?: ProjectSkillInfo[];
 }
 
 /** HQ ≤ 0.3 wrote its role to ROLE.md; recognise that so it can be cleaned up. */
@@ -148,7 +153,7 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
     "Record decisions others must follow, and lessons worth keeping, with add_to_memory.",
   );
   rules.push(
-    "You can message any teammate with send_message, whatever the reporting lines.",
+    messagingOf(cfg).direct === "anyone" ? "You can message any teammate with send_message, whatever the reporting lines." : "You can message teammates with send_message (see Messages for who).",
     "When you need the CEO to approve or decide something, or to do something outside your sandbox (create an account, database or API key, change a setting in a dashboard, put a value in your env file), call ask_user with a short title and clear steps, then keep working on what you can. You don't need to go through the lead for this. Never put secret values in it; name the variable instead. Variables reach you through HQ: ask the user to add NAME to your App variables in HQ (Settings → Sandbox → App variables) and restart you; there is no env file inside your sandbox to edit.",
   );
   // A research tool the role was given (Settings → Roles → Tools).
@@ -183,6 +188,10 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
     ...rules.map((r) => `- ${r}`),
     "",
     ...(stackRoleMd(cfg.stack) ? [stackRoleMd(cfg.stack), ""] : []),
+    ...(toolkitsRoleMd(agent, cfg, extras.projectSkills) ? [toolkitsRoleMd(agent, cfg, extras.projectSkills), ""] : []),
+    messagingRoleMd(agent, cfg),
+    "",
+    ...(agent.isLead && schedulesRoleMd(cfg) ? [schedulesRoleMd(cfg), ""] : []),
     ...(extras.hasEnvFile
       ? [
           "## App variables",

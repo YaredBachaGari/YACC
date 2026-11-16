@@ -2,6 +2,8 @@
 // a starting brief), and the role library: ready-made roles the CEO adds and the lead hires from.
 // Built-ins live here; templates you save are folders under .yacc/templates/ (server/templates.ts).
 
+import type { ToolkitChoice } from "./toolkits";
+import type { Schedule } from "./schedules";
 import { DEVELOPER_INSTRUCTIONS, LEAD_DUTIES, WORKER_BASE_INSTRUCTIONS, roleSlug } from "./roles";
 import { ANY_ROLE, LEAD_ROLE_ID, type AutonomyConfig, type DeliverableKind, type Permission, type RoleConfig, type StageConfig, type ThemeId } from "./types";
 
@@ -41,6 +43,23 @@ export interface Template {
   maxAgents?: number;
   /** Starting project brief (.yacc/memory/brief.md). */
   brief?: string;
+  /** Toolkits the team starts with, each for every role or the roles listed (toolkits.ts). */
+  toolkits?: ToolkitChoice[];
+  /** The team's own skills, written to .yacc/skills/<name>/SKILL.md when the team is created. */
+  skills?: TemplateSkill[];
+  /** Work that starts on its own. Built-in ones start switched off: you turn them on in Settings → Schedules. */
+  schedules?: Schedule[];
+}
+
+/** A project skill a template brings. */
+export interface TemplateSkill {
+  name: string;
+  description: string;
+  body: string;
+  /** Left out: every role. */
+  roles?: string[];
+  /** A saved template's folder for the skill (copied whole, with any files beside SKILL.md). */
+  dir?: string;
 }
 
 const card = (title: string, summary: string, can: Permission[], instructions: string): RoleCard => ({ id: roleSlug(title), title, summary, can, instructions });
@@ -116,6 +135,14 @@ export const BUILT_IN_TEMPLATES: Template[] = [
       { name: "Michael", role: LEAD_ROLE_ID },
       { name: "Dwight", role: "developer" },
     ],
+    toolkits: [
+      { id: "web-testing", roles: ["qa"] },
+      { id: "frontend-design", roles: ["designer"] },
+      { id: "documents", roles: ["technical-writer"] },
+    ],
+    schedules: [
+      { id: "weekly-progress", name: "Weekly progress", enabled: false, every: "week", day: 5, at: "16:00", action: "message", to: "lead", text: "It's the end of the week. Send me a report_to_ceo briefing: what shipped, what's in review, what's blocked, and what's next." },
+    ],
   },
   {
     id: "content-studio",
@@ -147,6 +174,46 @@ export const BUILT_IN_TEMPLATES: Template[] = [
       { name: "Sam", role: "editor" },
     ],
     brief: "# Brief\n\nWho the work is for, what it should achieve, the tone, and the length. (Replace this with your own.)\n",
+    toolkits: [
+      { id: "documents", roles: ["writer", "editor", "marketer"] },
+      { id: "writing", roles: ["writer", "editor"] },
+      { id: "visual-design", roles: ["designer"] },
+    ],
+    schedules: [
+      { id: "daily-content-run", name: "Daily content run", enabled: false, every: "weekday", at: "09:00", action: "message", to: "lead", text: "Good morning. Plan today's pieces from the brief: create a task for each, with its audience, length and done-when, and get the researchers started." },
+      { id: "weekly-roundup", name: "Weekly roundup", enabled: false, every: "week", day: 5, at: "16:00", action: "message", to: "lead", text: "Send me a report_to_ceo briefing for the week: pieces finished (with where they are in shared/), pieces in progress, and anything you need from me." },
+    ],
+    skills: [
+      {
+        name: "source-notes",
+        description: "Use when researching a piece: how to find, check and write down sources so the writer can use them.",
+        roles: ["researcher", "fact-checker"],
+        body: `# Source notes
+
+Write one notes file per piece, shared/research/<piece>.md, in this shape:
+
+1. **The question**: what the piece needs to know, in one line.
+2. **Findings**: one bullet per fact, each with its source link and the date you checked it.
+3. **Unsure**: anything you couldn't confirm, and why.
+4. **Quotes**: exact words only, with who said them and where.
+
+Prefer primary sources (official sites, papers, data) over articles about them. Two independent sources for any number. Never invent a source; say what's missing instead.`,
+      },
+      {
+        name: "house-style",
+        description: "Use when writing or editing any piece: the studio's voice, length and formatting rules.",
+        roles: ["writer", "editor"],
+        body: `# House style
+
+- Write for the audience in the brief. Short sentences, plain words, active voice.
+- Every fact comes from the researcher's notes (shared/research/); cite the source in a footnote or the script notes.
+- Keep to the length in the brief, give or take 10%.
+- Headings and lists only where they help the reader find things.
+- Before handing on: read it aloud once, fix anything that trips you up.
+
+Change these rules to your channel's in .yacc/skills/house-style/SKILL.md.`,
+      },
+    ],
   },
   {
     id: "rd-lab",
@@ -178,6 +245,26 @@ export const BUILT_IN_TEMPLATES: Template[] = [
       { name: "Alan", role: "analyst" },
     ],
     brief: "# Brief\n\nThe question the lab is working on, what is known, and what a useful answer looks like. (Replace this with your own.)\n",
+    toolkits: [{ id: "documents" }],
+    schedules: [
+      { id: "weekly-lab-report", name: "Weekly lab report", enabled: false, every: "week", day: 5, at: "16:00", action: "message", to: "lead", text: "Send me a report_to_ceo briefing for the week: experiments finished and what they showed, what's running, and what you'd test next." },
+    ],
+    skills: [
+      {
+        name: "lab-notebook",
+        description: "Use when planning, running or analysing an experiment: how to record it so anyone can repeat it.",
+        roles: ["experimenter", "analyst"],
+        body: `# Lab notebook
+
+Keep one entry per experiment in shared/notebook/<experiment>.md:
+
+- **Question** and the result that would answer it, written before you start.
+- **Method**: steps, inputs, versions and settings, enough for someone else to repeat it.
+- **Raw results**: where they're saved. Never edit raw data; work on copies.
+- **What happened**: including what went wrong or differed from the plan.
+- **Analysis**: what the results show, how sure you are, and what you'd do next.`,
+      },
+    ],
   },
   {
     id: "lead-only",

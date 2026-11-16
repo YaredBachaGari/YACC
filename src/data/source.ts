@@ -1,3 +1,6 @@
+import type { ProjectSkillChoice, ProjectSkillInfo, ToolkitChoice } from "./toolkits";
+import type { MessagingConfig } from "./messaging";
+import type { Schedule, ScheduleStatus } from "./schedules";
 import type { StackConfig } from "./stack";
 import type {
   AccessDecision,
@@ -60,7 +63,9 @@ export type OfficeEvent =
   | { type: "briefing.updated"; briefing: Briefing }
   | { type: "shared.updated"; files: SharedFile[] }
   | { type: "memory.updated"; memory: ProjectMemory }
-  | { type: "usage.updated"; usage: UsageView };
+  | { type: "usage.updated"; usage: UsageView }
+  | { type: "skills.updated"; skills: ProjectSkillInfo[] }
+  | { type: "schedules.updated"; schedules: ScheduleStatus[] };
 
 export type SimSpeed = 1 | 2 | 4;
 
@@ -86,7 +91,7 @@ export interface OfficeDataSource {
   sendTerminalInput(agentId: string, data: string): void;
   resizeTerminal(agentId: string, cols: number, rows: number): void;
   assignTask(taskId: string, agentId: string): void;
-  /** You → an agent, delivered like any Team MCP message. */
+  /** You → an agent, or a post to a channel (#team, #<role id>), delivered like any Team MCP message. */
   sendMessage(toId: string, text: string): void;
 
   // agent sessions
@@ -154,6 +159,23 @@ export interface OfficeDataSource {
   removeRole(id: string): void;
   /** The CEO's name and the headcount limit. */
   updateOrg(patch: OrgPatch): void;
+  /** Channels and who may message whom. */
+  updateMessaging(messaging: MessagingConfig): void;
+  /** The team's schedules, saved whole. */
+  updateSchedules(schedules: Schedule[]): void;
+  /** Runs a schedule now, whatever its time. */
+  runSchedule(id: string): void;
+  /** Which toolkits the team uses, each for every role or the roles listed. */
+  updateToolkits(list: ToolkitChoice[]): void;
+  /** Which roles get each of the team's own skills. */
+  updateProjectSkills(list: ProjectSkillChoice[]): void;
+  /** Creates or rewrites a project skill (.yacc/skills/<name>/SKILL.md). A new one goes to `roles` (none: every role). */
+  saveProjectSkill(input: { name: string; description: string; body: string; roles?: string[] }): void;
+  removeProjectSkill(name: string): void;
+  /** Reads .yacc/skills/ again. */
+  refreshProjectSkills(): void;
+  /** A project skill's text, for editing. */
+  readProjectSkill(name: string): Promise<{ name: string; description: string; body: string } | null>;
   /** An uploaded picture (a small PNG as base64) for an agent or the CEO ("ceo"); null removes it. */
   setAvatarImage(who: string, png: string | null): void;
   /** Where the browser loads an uploaded picture from (`avatar.image` is a path under .yacc/). */

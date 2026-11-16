@@ -3,11 +3,12 @@ import { ui, useUi, type SettingsTab } from "../../store/ui";
 import { BoardsSettings } from "./BoardsSettings";
 import { ProjectSettings } from "./ProjectSettings";
 import { SandboxSettingsTab } from "./SandboxSettings";
-import { StackSettings } from "./StackSettings";
+import { ToolkitsSettings } from "./ToolkitsSettings";
 import { McpSettings } from "./McpSettings";
 import { ModelsSettings } from "./ModelsSettings";
 import { MemorySettings } from "./MemorySettings";
 import { OrgChart } from "./OrgChart";
+import { SchedulesSettings } from "./SchedulesSettings";
 import { RolesSettings } from "./RolesSettings";
 import { TeamSettings } from "./TeamSettings";
 import { WorkflowSettings } from "./WorkflowSettings";
@@ -19,7 +20,8 @@ const TABS: { id: SettingsTab; label: string; hint: string }[] = [
   { id: "models", label: "Models", hint: "Providers, sign-in, research" },
   { id: "memory", label: "Memory", hint: "Brief, decisions, lessons" },
   { id: "workflow", label: "Workflow", hint: "Stages, reviews, approvals" },
-  { id: "stack", label: "Stack", hint: "Frameworks, tools" },
+  { id: "schedules", label: "Schedules", hint: "Work that starts on its own" },
+  { id: "stack", label: "Toolkits", hint: "Skills, tools, coding stack" },
   { id: "mcp", label: "MCP", hint: "Servers for agents" },
   { id: "sandbox", label: "Sandbox", hint: "Network, proxy, secrets" },
   { id: "boards", label: "Boards", hint: "Progress boards" },
@@ -73,7 +75,8 @@ export function SettingsModal() {
             {settings.tab === "models" && <ModelsSettings />}
             {settings.tab === "memory" && <MemorySettings />}
             {settings.tab === "workflow" && <WorkflowSettings />}
-            {settings.tab === "stack" && <StackSettings />}
+            {settings.tab === "schedules" && <SchedulesSettings />}
+            {settings.tab === "stack" && <ToolkitsSettings />}
             {settings.tab === "mcp" && <McpSettings />}
             {settings.tab === "sandbox" && <SandboxSettingsTab initialAgentId={settings.agentId} />}
             {settings.tab === "boards" && <BoardsSettings />}

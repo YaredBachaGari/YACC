@@ -93,6 +93,12 @@ const askwell: Preset = {
       agent("dwight", "Dwight", "Developer", "#29adff", { bio: "Back end and data. Writes the tests first.", avatar: { skin: 0, hair: 0, style: 4, glasses: true } }),
       agent("jim", "Jim", "Developer", "#ffd23a"),
     ],
+    toolkits: [{ id: "web-testing" }, { id: "frontend-design" }],
+    skills: [{ name: "pr-checklist" }],
+    schedules: [
+      { id: "weekly-progress", name: "Weekly progress", enabled: true, every: "week", day: 5, at: "16:00", action: "message", to: "lead", text: "It's the end of the week. Send me a report_to_ceo briefing: what shipped, what's in review, what's blocked." },
+      { id: "release-notes", name: "Release notes", enabled: false, on: "pr-merged", action: "message", to: "#developer", text: "{pr} ({title}) is merged. Add a line for it to CHANGELOG.md in your next PR." },
+    ],
     workflow: {
       ...defaultWorkflowParts(true),
       review: { enabled: true, tool: "coderabbit", command: "" },

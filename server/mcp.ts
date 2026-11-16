@@ -416,10 +416,14 @@ function buildServer(hub: Hub, planner: Planner, team: Team, extras: McpExtras, 
   server.registerTool(
     "send_message",
     {
-      description: "Send a message to another agent (id, name, or \"lead\"). HQ delivers it: right away if they are idle, otherwise when their current turn ends.",
+      description: "Send a message to another agent (id, name, or \"lead\"), or post to a channel: \"#team\" reaches everyone, \"#<role id>\" (e.g. #writer) everyone with that role. HQ delivers it: right away if they are idle, otherwise when their current turn ends. Your team may limit who you can message; the error says who to ask instead.",
       inputSchema: { to: z.string(), text: z.string() },
     },
     guard(({ to, text }: { to: string; text: string }) => {
+      if (to.trim().startsWith("#")) {
+        const channel = planner.message(me, to, text);
+        return ok(`Posted to ${channel}.`);
+      }
       const toId = planner.agentId(to);
       if (toId === me) throw new Error("That's you.");
       planner.message(me, to, text);

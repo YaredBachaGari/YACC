@@ -1,6 +1,7 @@
 // Boards, tasks, assignments and messages. Used by both the Team MCP tools
 // (agents) and the browser commands (you), so both follow the same rules.
 
+import { channelMembers, channelsOf, directBlock, isChannel, postBlock } from "../src/data/messaging";
 import { ANY_ROLE, CEO_ID, type AgentConfig, type Board, type StageConfig, type Task, type TaskStatus } from "../src/data/types";
 import { nextStageOf, stageOf } from "../src/data/workflow";
 import type { Hub } from "./hub";
@@ -344,11 +345,29 @@ export class Planner {
   // ------------------------------------------------------------ messages
 
   /** Records a message, shows it in the office, and delivers it. */
+  /**
+   * A message to an agent, or a post to a channel (#team, #<role>) that reaches everyone in it.
+   * The team's messaging rules apply to agents; you and HQ are never limited. Returns the id it went to.
+   */
   message(fromId: string, toRef: string, text: string) {
-    const toId = this.agentId(toRef);
-    if (!toId) throw new Error(`No agent "${toRef}". Team: ${this.snap.config.team.map((a) => a.id).join(", ")}`);
+    const cfg = this.snap.config;
     const clean = text.trim().slice(0, 2000);
+    if (isChannel(toRef.trim())) {
+      const channel = toRef.trim().toLowerCase();
+      const blocked = postBlock(cfg, fromId, channel);
+      if (blocked) throw new Error(blocked);
+      if (!clean) throw new Error("Empty message");
+      const to = channelMembers(cfg, channel).filter((id) => id !== fromId);
+      this.record(fromId, channel, clean);
+      this.hub.activity("message", fromId === "you" || fromId === "hq" ? null : fromId, `${this.hub.name(fromId)} → ${channel} (${to.length}): ${clean.slice(0, 80)}`);
+      for (const id of to) this.inbox.push(id, { fromId, kind: "message", text: `[${channel}] ${clean}` });
+      return channel;
+    }
+    const toId = this.agentId(toRef);
+    if (!toId) throw new Error(`No agent "${toRef}". Team: ${cfg.team.map((a) => a.id).join(", ")}. Channels: ${channelsOf(cfg).map((c) => c.id).join(", ")}`);
     if (!clean) throw new Error("Empty message");
+    const blocked = directBlock(cfg, fromId, toId);
+    if (blocked) throw new Error(blocked);
     this.record(fromId, toId, clean);
     this.hub.activity("message", fromId === "you" ? null : fromId, `${this.hub.name(fromId)} → ${this.hub.name(toId)}: ${clean.slice(0, 80)}`);
     this.inbox.push(toId, { fromId, kind: "message", text: clean });

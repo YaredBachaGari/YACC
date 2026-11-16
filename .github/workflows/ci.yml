@@ -42,6 +42,10 @@ jobs:
         run: npx tsx scripts/profiles-test.ts
       - name: Org chart and workflow editors
         run: npx tsx scripts/editors-test.ts
+      - name: Toolkits and team skills
+        run: npx tsx scripts/toolkits-test.ts
+      - name: Channels, messaging rules and schedules
+        run: npx tsx scripts/channels-test.ts
       - name: Session backends (fake agent)
         run: npx tsx scripts/session-backend-test.ts
       - name: Agent clones (line endings)

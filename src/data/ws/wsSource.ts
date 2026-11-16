@@ -92,6 +92,18 @@ export function createWsSource(token: string): OfficeDataSource {
     removeRole: (id) => send("removeRole", id),
     updateOrg: (patch) => send("updateOrg", patch),
     setAvatarImage: (who, png) => send("setAvatarImage", who, png),
+    updateToolkits: (list) => send("updateToolkits", list),
+    updateMessaging: (m) => send("updateMessaging", m),
+    updateSchedules: (list) => send("updateSchedules", list),
+    runSchedule: (id) => send("runSchedule", id),
+    updateProjectSkills: (list) => send("updateProjectSkills", list),
+    saveProjectSkill: (input) => send("saveProjectSkill", input),
+    removeProjectSkill: (name) => send("removeProjectSkill", name),
+    refreshProjectSkills: () => send("refreshProjectSkills"),
+    readProjectSkill: async (name) => {
+      const r = await fetch(`/skills/${encodeURIComponent(name)}?token=${encodeURIComponent(token)}`);
+      return r.ok ? ((await r.json()) as { name: string; description: string; body: string }) : null;
+    },
     avatarUrl: (image) => `/avatars/${encodeURIComponent(image.replace(/^avatars\//, ""))}?token=${encodeURIComponent(token)}`,
     setProviderAuth: (provider, auth) => send("setProviderAuth", provider, auth),
     setRouting: (routing) => send("setRouting", routing),

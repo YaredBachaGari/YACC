@@ -1,4 +1,7 @@
 import type { StackConfig } from "./stack";
+import type { ProjectSkillChoice, ProjectSkillInfo, ToolkitChoice } from "./toolkits";
+import type { MessagingConfig } from "./messaging";
+import type { Schedule, ScheduleStatus } from "./schedules";
 // Domain types shared by the data source, the store, the office and the HUD.
 
 // ---------------------------------------------------------------- Config
@@ -312,6 +315,14 @@ export interface HqConfig {
   workflow: WorkflowConfig;
   /** Optional: what the project is built with (plan 009). */
   stack?: StackConfig;
+  /** Toolkits the team uses (toolkits.ts), each for every role or the roles listed. */
+  toolkits?: ToolkitChoice[];
+  /** The team's own skills (.yacc/skills/<name>/), each for every role or the roles listed. */
+  skills?: ProjectSkillChoice[];
+  /** Channels and who may message whom (messaging.ts). Left out: anyone may message anyone. */
+  messaging?: MessagingConfig;
+  /** Recurring or event-started work (schedules.ts). */
+  schedules?: Schedule[];
   /** How each model provider is signed in to. Left out: each provider's default (see models.ts). */
   providers?: ProvidersConfig;
   /** Model by kind of work, and what to switch to at a usage limit. */
@@ -436,8 +447,8 @@ export const HUMAN_ID = "you";
 export interface AgentMessage {
   id: string;
   at: string;
-  fromId: string; // agent id, or HUMAN_ID
-  toId: string;
+  fromId: string; // agent id, HUMAN_ID, or "hq"
+  toId: string; // agent id, or a channel: "#team", "#<role id>"
   text: string;
   delivered?: "typed" | "on-stop" | "queued"; // how HQ handed it over
 }
@@ -612,6 +623,10 @@ export interface OfficeSnapshot {
   sharedFiles?: SharedFile[];
   memory?: ProjectMemory;
   usage?: UsageView;
+  /** The skill folders in .yacc/skills/ (real HQ: read from disk; given to roles by config.skills). */
+  projectSkills?: ProjectSkillInfo[];
+  /** When each schedule last ran and runs next. */
+  schedules?: ScheduleStatus[];
 }
 
 /** A file in the project's shared folder (`shared/` in the repo), which every agent can get. */
@@ -686,6 +701,8 @@ export interface WelcomeInput {
   reviewEnabled: boolean;
   /** Optional: what the project is built with. */
   stack?: StackConfig;
+  /** Toolkits to start with. Left out: the template's. */
+  toolkits?: ToolkitChoice[];
 }
 
 export type AgentPatch = Partial<

@@ -130,6 +130,9 @@ export function TopBar() {
         >
           Briefings{unreadBriefings ? ` · ${unreadBriefings}` : ""}
         </button>
+        <button className="btn text-[14px]" onClick={() => ui.openChannels()} title="#team and the role channels">
+          Channels
+        </button>
         <button className="btn text-[14px]" onClick={() => ui.openBoards(planBoardId ?? undefined)}>
           Boards
         </button>

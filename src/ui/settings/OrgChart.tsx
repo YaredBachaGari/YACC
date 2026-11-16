@@ -9,6 +9,7 @@ import { CEO_ID, LEAD_ROLE_ID, type AgentConfig, type HqConfig, type RoleConfig 
 import { officeActions, useOffice } from "../../store/office";
 import { ui } from "../../store/ui";
 import { Field, Portrait, SectionTitle } from "../kit";
+import { MessagingSection } from "./MessagingSection";
 
 type Drag = { kind: "agent"; id: string } | { kind: "role"; id: string } | null;
 
@@ -105,6 +106,7 @@ export function OrgChart() {
           <RolePalette cfg={cfg} full={full} onDragStart={(id) => start({ kind: "role", id })} onDragEnd={end} dragging={drag?.kind === "role" ? drag.id : null} />
         </aside>
       </div>
+      <MessagingSection cfg={cfg} />
     </div>
   );
 }

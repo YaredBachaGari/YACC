@@ -3,6 +3,7 @@
 //   POST /hook/<agent>/<event>  Claude Code hooks (agent token)
 //   POST /otlp/<agent>/<token>/v1/metrics|logs   token use from agent programs (OpenTelemetry)
 //   GET  /avatars/<file>?token=…   uploaded profile pictures (browser token)
+//   GET  /skills/<name>?token=…    a project skill's text, for editing (browser token)
 //   GET  /api/health
 //   GET  /*                     the built UI (dist/), when present
 
@@ -23,6 +24,7 @@ import type { McpExtras } from "./mcp";
 import { log } from "./lib/log";
 import { decodeLogs, decodeMetrics } from "./otlp";
 import { readAvatar } from "./avatars";
+import { readProjectSkill } from "./projectSkills";
 import type { Usage } from "./usage";
 
 const MIME: Record<string, string> = {
@@ -152,6 +154,14 @@ export function startHttp(o: Options) {
       // File names change with every upload, so a picture never changes under its name.
       res.writeHead(200, { "Content-Type": "image/png", "Cache-Control": "private, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff" });
       return void res.end(png);
+    }
+
+    if (req.method === "GET" && url.pathname.startsWith("/skills/")) {
+      if (!safeEqual(url.searchParams.get("token") ?? "", o.browserToken)) return send(res, 401, "unauthorized");
+      const skill = readProjectSkill(o.hub.repo.root, decodeURIComponent(url.pathname.slice("/skills/".length)));
+      if (!skill) return send(res, 404, "not found");
+      res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+      return void res.end(JSON.stringify(skill));
     }
 
     if (url.pathname === "/api/health") return send(res, 200, JSON.stringify({ ok: true }), "application/json");

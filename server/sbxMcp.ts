@@ -168,11 +168,16 @@ export class SbxMcp {
     });
   }
 
-  /** A role's tools changed: attach what's new to its agents whose sandboxes are running. */
-  syncRole(roleId: string) {
+  /** Toolkits changed: attach what's new to every agent whose sandbox is running. */
+  syncTeam() {
+    return this.syncRole(null);
+  }
+
+  /** A role's tools changed (null: any role's): attach what's new to its agents whose sandboxes are running. */
+  syncRole(roleId: string | null) {
     return this.serial(async () => {
       for (const agent of this.hub.snap.config.team) {
-        if (agent.roleId !== roleId || agent.mode !== "sandbox" || this.hub.status(agent.id)?.session.state !== "running") continue;
+        if ((roleId !== null && agent.roleId !== roleId) || agent.mode !== "sandbox" || this.hub.status(agent.id)?.session.state !== "running") continue;
         const missing = mcpFor(agent, this.hub.snap.config).filter((n) => !this.state.attached[agent.id]?.includes(n));
         if (missing.length) await this.attach(agent.id, missing);
       }
