@@ -10,7 +10,7 @@ import { z } from "zod";
 import type { Hub } from "./hub";
 import { requestAccess } from "./access";
 import type { Planner } from "./planner";
-import { can, managerName, roleOf, toolsFor } from "../src/data/roles";
+import { can, findRole, managerName, roleOf, toolsFor } from "../src/data/roles";
 import type { Permission } from "../src/data/types";
 import type { Team } from "./team";
 import type { Briefings } from "./briefings";
@@ -126,6 +126,22 @@ function buildServer(hub: Hub, planner: Planner, team: Team, extras: McpExtras, 
     guard(({ title, active }: { title: string; active?: boolean }) => {
       needs("plan");
       return ok(planner.createBoard(title, active ? "active" : "planned"));
+    }),
+  );
+
+  server.registerTool(
+    "update_board",
+    {
+      description: "Rename a board, or set its status: planned, active (agents pick tasks from it) or done. When a board is done, HQ may ask you for a retrospective.",
+      inputSchema: { boardId: z.string(), title: z.string().optional(), status: z.enum(["planned", "active", "done"]).optional() },
+    },
+    guard(({ boardId, title, status }: { boardId: string; title?: string; status?: "planned" | "active" | "done" }) => {
+      needs("plan");
+      if (status === "done") {
+        const open = planner.snapshotTasks().filter((t) => t.boardId === boardId && t.status !== "done");
+        if (open.length) throw new Error(`${open.length} task${open.length > 1 ? "s are" : " is"} not done yet: ${open.map((t) => t.id).join(", ")}. Finish or move ${open.length > 1 ? "them" : "it"} first.`);
+      }
+      return ok(planner.updateBoard(boardId, { title, status }));
     }),
   );
 
@@ -337,6 +353,44 @@ function buildServer(hub: Hub, planner: Planner, team: Team, extras: McpExtras, 
       needs("plan");
       extras.briefings.report(me, summary, deliverables, questions);
       return ok("Sent. It is in the CEO's Briefings; their reply comes to you as a message.");
+    }),
+  );
+
+  server.registerTool(
+    "read_role",
+    {
+      description: "A role's full instructions (what agents with it are told), so you can propose a change with propose_role_change.",
+      inputSchema: { role: z.string().describe("A role id or title") },
+    },
+    guard(({ role }: { role: string }) => {
+      needs("plan");
+      const r = findRole(hub.snap.config, role);
+      if (!r) throw new Error(`No role "${role}". Roles: ${hub.snap.config.roles.map((x) => x.id).join(", ")}`);
+      return ok({ id: r.id, title: r.title, can: r.can, instructions: r.instructions, holders: hub.snap.config.team.filter((a) => a.roleId === r.id).map((a) => a.name) });
+    }),
+  );
+
+  server.registerTool(
+    "propose_role_change",
+    {
+      description:
+        "Propose new instructions for a role (in a retrospective, or whenever you learn the instructions should change). Give the role, its complete new instructions (not a diff: read_role first) and why. The CEO accepts or rejects it in Action items; HQ tells you which. Agents get accepted instructions on their next start.",
+      inputSchema: {
+        role: z.string().describe("A role id or title"),
+        instructions: z.string().describe("The role's complete new instructions, in Markdown"),
+        reason: z.string().describe("What went wrong or could go better, and how this change helps"),
+      },
+    },
+    guard(({ role, instructions, reason }: { role: string; instructions: string; reason: string }) => {
+      needs("plan");
+      const r = findRole(hub.snap.config, role);
+      if (!r) throw new Error(`No role "${role}". Roles: ${hub.snap.config.roles.map((x) => x.id).join(", ")}`);
+      if (!reason?.trim()) throw new Error("Say why (reason). The CEO sees it.");
+      if (!instructions?.trim()) throw new Error("Give the complete new instructions.");
+      if (instructions.length > 20_000) throw new Error("Keep instructions under 20,000 characters.");
+      if (!planner.actions) throw new Error("HQ can't take proposals right now.");
+      planner.actions.addRoleChange(me, r.id, instructions, reason);
+      return ok(`Sent to the CEO: a change to the ${r.title} role. HQ tells you when they accept or reject it.`);
     }),
   );
 

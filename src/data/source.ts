@@ -1,6 +1,10 @@
 import type { ProjectSkillChoice, ProjectSkillInfo, ToolkitChoice } from "./toolkits";
 import type { MessagingConfig } from "./messaging";
 import type { Schedule, ScheduleStatus } from "./schedules";
+import type { AuditEntry, AuditKind } from "./audit";
+import type { Template } from "./templates";
+import type { ProjectEntry } from "./projects";
+import type { GalleryEntry, TemplateBundle, TemplatePreview } from "./templateBundle";
 import type { StackConfig } from "./stack";
 import type {
   AccessDecision,
@@ -65,7 +69,8 @@ export type OfficeEvent =
   | { type: "memory.updated"; memory: ProjectMemory }
   | { type: "usage.updated"; usage: UsageView }
   | { type: "skills.updated"; skills: ProjectSkillInfo[] }
-  | { type: "schedules.updated"; schedules: ScheduleStatus[] };
+  | { type: "schedules.updated"; schedules: ScheduleStatus[] }
+  | { type: "templates.updated"; templates: Template[] };
 
 export type SimSpeed = 1 | 2 | 4;
 
@@ -161,6 +166,20 @@ export interface OfficeDataSource {
   updateOrg(patch: OrgPatch): void;
   /** Channels and who may message whom. */
   updateMessaging(messaging: MessagingConfig): void;
+  /** Asks the lead for a retrospective on a board (the last one done, when none is given). */
+  requestRetrospective(boardId?: string): void;
+  /** Template sharing: what a bundle (or a URL to one) would add, installing it, exporting one, deleting one, the gallery. */
+  previewTemplate(src: { bundle?: unknown; url?: string }): Promise<{ preview?: TemplatePreview; error?: string }>;
+  importTemplate(src: { bundle?: unknown; url?: string }, where: "project" | "user"): Promise<{ id?: string; name?: string; error?: string }>;
+  exportTemplate(id: string): Promise<TemplateBundle | { error: string }>;
+  deleteTemplate(id: string): Promise<{ error?: string }>;
+  readGallery(): Promise<{ templates?: GalleryEntry[]; error?: string }>;
+  /** The project switcher: projects on this computer; open one (starting its HQ if needed); take one off the list. */
+  listProjects(): Promise<{ projects?: ProjectEntry[]; error?: string }>;
+  openProject(ref: { slug?: string; root?: string }): Promise<{ url?: string; started?: boolean; error?: string }>;
+  forgetProject(slug: string): Promise<{ projects?: ProjectEntry[]; error?: string }>;
+  /** The audit log, newest first. */
+  readAudit(q: { before?: string; limit?: number; kind?: AuditKind; actor?: string; text?: string }): Promise<{ entries: AuditEntry[]; more: boolean }>;
   /** The team's schedules, saved whole. */
   updateSchedules(schedules: Schedule[]): void;
   /** Runs a schedule now, whatever its time. */

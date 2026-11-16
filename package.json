@@ -1,7 +1,7 @@
 {
   "name": "yacc-hq",
-  "version": "0.11.0",
-  "description": "A command center for teams of AI agents: sandboxed, configurable by template, and visible in a live office view.",
+  "version": "0.12.0",
+  "description": "A command center for teams of AI agents: a lead plans, agents work in their own sandboxes, and you steer from a live office. Templates for software, content and research teams.",
   "license": "MIT",
   "type": "module",
   "homepage": "https://github.com/YaredBachaGari/YACC#readme",
@@ -13,18 +13,22 @@
     "url": "https://github.com/YaredBachaGari/YACC/issues"
   },
   "keywords": [
-    "ai",
-    "agents",
-    "ai-agents",
-    "multi-agent",
     "agent-orchestration",
-    "coding-agents",
+    "agents",
+    "ai",
+    "ai-agents",
+    "ai-team",
     "claude",
     "claude-code",
     "codex",
+    "coding-agents",
+    "deepseek",
+    "developer-tools",
     "docker-sandboxes",
+    "gemini",
     "mcp",
-    "developer-tools"
+    "multi-agent",
+    "templates"
   ],
   "bin": {
     "yacc-hq": "bin/yacc-hq.mjs"
@@ -37,10 +41,16 @@
     "LICENSE",
     "SECURITY.md",
     "README.md",
-    "NOTICE.md"
+    "NOTICE.md",
+    "CHANGELOG.md",
+    "docs"
   ],
   "engines": {
     "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
   "scripts": {
     "dev": "vite",
@@ -85,6 +95,5 @@
     "typescript": "~5.8.3",
     "vite": "^6.4.4",
     "zustand": "^5.0.15"
-  },
-  "private": true
+  }
 }

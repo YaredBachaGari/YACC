@@ -68,6 +68,7 @@ async function answer(hub: Hub, sbx: Sbx, planner: Planner, requestId: string, d
     hub.accessAnswered(r.agentId);
   };
 
+  hub.audit("access", `${decision === "deny" ? "Denied" : decision === "everyone" ? "Allowed for every sandbox" : `Allowed for ${who}`}: ${req.domain}`, req.domain, "you");
   if (decision === "deny") {
     settle(req, "denied");
     hub.activity("config", req.agentId, `You denied ${who} access to ${req.domain}`);

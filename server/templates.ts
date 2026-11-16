@@ -14,6 +14,7 @@ import { AGENT_CLIS, GATES, LEAD_ROLE_ID, PERMISSIONS, type HqConfig } from "../
 import { cleanProjectSkills, cleanToolkits, parseSkillMd, projectSkillsYaml, toolkitsYaml } from "../src/data/toolkits";
 import { MCP_NAME } from "./sbxMcp";
 import { cleanSchedules } from "../src/data/schedules";
+import type { Hub } from "./hub";
 import { skillsDir } from "./projectSkills";
 
 const roleFileRef = (id: string) => `roles/${roleSlug(id)}.md`;
@@ -91,6 +92,16 @@ export function readTemplate(dir: string, source: Template["source"]): Template 
 
 const userDir = () => join(homedir(), ".yacc", "templates");
 const projectDir = (repoRoot: string) => join(repoRoot, ".yacc", "templates");
+/** Where saved templates live: this project's (.yacc/templates/) or yours (~/.yacc/templates/). */
+export const templateDir = (where: "project" | "user", repoRoot: string) => (where === "project" ? projectDir(repoRoot) : userDir());
+
+/** Re-reads the templates the welcome and Settings offer, and tells the browsers. */
+export function refreshTemplates(hub: Hub) {
+  const found = listTemplates(hub.repo.root);
+  hub.snap.templates = found.templates;
+  hub.emit({ type: "templates.updated", templates: structuredClone(found.templates) });
+  return found.problems;
+}
 
 /** Built-ins, then this project's, then yours. A folder that can't be read is skipped and reported. */
 export function listTemplates(repoRoot: string): { templates: Template[]; problems: string[] } {

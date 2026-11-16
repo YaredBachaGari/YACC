@@ -1,6 +1,8 @@
 // In-memory state for the mock source. Every mutation goes through a helper
 // that emits the matching OfficeEvent, so the store stays in sync.
 
+import { describeConfigChange, type AuditEntry, type AuditKind } from "../audit";
+import type { HqConfig } from "../types";
 import { channelMembers, isChannel } from "../messaging";
 import type { OfficeEvent, SimSpeed } from "../source";
 import type {
@@ -351,8 +353,20 @@ export class World {
     });
   }
 
+  /** The demo's audit log, newest first. */
+  audit: AuditEntry[] = [];
+  savedConfig: HqConfig | null = null;
+
+  record(kind: AuditKind, actor: string, summary: string, target?: string) {
+    this.audit.unshift({ at: now(), kind, actor, summary, ...(target ? { target } : {}) });
+    this.audit = this.audit.slice(0, 500);
+  }
+
   configChanged() {
     normalizeConfig(this.snap.config);
+    const changes = this.savedConfig ? describeConfigChange(this.savedConfig, this.snap.config) : [];
+    this.savedConfig = structuredClone(this.snap.config);
+    if (changes.length) this.record("config", "you", `Changed ${changes.join("; ")}`);
     this.emit({ type: "config.updated", config: structuredClone(this.snap.config) });
   }
 

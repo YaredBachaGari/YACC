@@ -1,6 +1,7 @@
 import type { SimSpeed } from "../../data/source";
 import { officeActions, selectAttention, useOffice } from "../../store/office";
 import { ui, useUi } from "../../store/ui";
+import { ProjectSwitcher } from "./ProjectSwitcher";
 
 const SPEEDS: SimSpeed[] = [1, 2, 4];
 
@@ -41,26 +42,27 @@ export function TopBar() {
   const unreadBriefings = useOffice((st) => (st.snap?.briefings ?? []).filter((b) => !b.read).length);
   const usesPrs = useOffice((st) => st.snap?.config.workflow.deliverable !== "files");
   return (
-    <header className="panel fixed left-4 right-4 top-[10px] z-10 flex h-[50px] items-center gap-4 px-3">
+    <header className="panel fixed left-4 right-4 top-[10px] z-10 flex h-[50px] items-center gap-3 px-3 2xl:gap-4">
       <div className="flex min-w-0 items-center gap-2.5">
         <Logo />
-        <b className="whitespace-nowrap text-[22px] font-bold tracking-[0.02em]">YACC</b>
+        <b className="shrink-0 whitespace-nowrap text-[22px] font-bold tracking-[0.02em]">YACC</b>
         {!live && (
-          <span className="chip shrink-0 text-[12px]" style={{ ["--c" as string]: "#ffec27" }} title="Running on mock data. Start the real HQ with `pnpm dev:hq`.">
+          <span
+            className="chip hidden shrink-0 text-[12px] xl:inline-flex"
+            style={{ ["--c" as string]: "#ffec27" }}
+            title="Running on mock data. Start the real HQ with `pnpm dev:hq`."
+          >
             Demo data
           </span>
         )}
-        <span className="truncate text-[16px] text-muted">
-          — <em className="font-semibold not-italic text-ink">{snap.config.project.name}</em>{" "}
-          <span className="font-term text-[17px]">{snap.config.project.repo}</span>
-        </span>
+        <ProjectSwitcher />
       </div>
       <div className="flex-1" />
 
-      <label className="flex items-center gap-2 text-[14px]">
-        <span className="text-muted">Plan wall</span>
+      <label className="flex shrink-0 items-center gap-2 text-[14px]">
+        <span className="hidden text-muted 2xl:inline">Plan wall</span>
         <select
-          className="field w-[190px] py-0 text-[14px]"
+          className="field w-[150px] py-0 text-[14px] 2xl:w-[190px]"
           value={planBoardId ?? ""}
           onChange={(e) => ui.showBoardOnWall(e.target.value || null)}
           aria-label="Board shown on the plan wall"
@@ -75,7 +77,7 @@ export function TopBar() {
       </label>
 
       {hasDev && (
-        <div className="flex items-center gap-1.5" role="group" aria-label="Simulation speed">
+        <div className="hidden shrink-0 items-center gap-1.5 2xl:flex" role="group" aria-label="Simulation speed">
           {SPEEDS.map((s) => (
             <button key={s} className="btn px-2 text-[14px]" aria-pressed={speed === s} onClick={() => officeActions.setSpeed(s)}>
               {s}x
@@ -84,7 +86,8 @@ export function TopBar() {
         </div>
       )}
 
-      <div className="flex gap-1.5">
+      {/* Narrower screens: zoom with + and - on the keyboard. */}
+      <div className="hidden gap-1.5 2xl:flex">
         <button className="btn w-8 px-0 text-[18px] leading-none" aria-label="Zoom out" onClick={() => ui.zoom(-1)}>
           −
         </button>
@@ -98,7 +101,18 @@ export function TopBar() {
         title="Each agent runs in its own isolated Docker Sandbox (microVM)"
       >
         <span>
-          Sandbox · <b>{sandboxes}</b> running{local ? ` · ${local} local` : ""}
+          {sandboxes || !local ? (
+            <>
+              <span className="hidden 2xl:inline">Sandbox · </span>
+              <b>{sandboxes}</b> running
+            </>
+          ) : null}
+          {local ? (
+            <>
+              {sandboxes ? " · " : ""}
+              <b>{local}</b> local
+            </>
+          ) : null}
         </span>
         <i className="led" style={runningIds.size ? undefined : { background: "#83769c", animation: "none" }} />
       </div>
@@ -148,7 +162,7 @@ export function TopBar() {
       <button className="btn text-[14px]" onClick={() => ui.openSettings("team")}>
         Settings
       </button>
-      <button className="btn text-[14px]" aria-pressed={debugOpen} onClick={() => ui.toggleDebug()} title="Debug panel (D)">
+      <button className="btn hidden text-[14px] 2xl:inline-block" aria-pressed={debugOpen} onClick={() => ui.toggleDebug()} title="Debug panel (D)">
         Debug
       </button>
     </header>

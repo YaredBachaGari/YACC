@@ -1,0 +1,135 @@
+{
+  "format": "yacc-template",
+  "version": 1,
+  "template": {
+    "name": "Newsletter desk",
+    "description": "A weekly newsletter. Research the week's stories, write the issue, edit it, and you sign off before it goes out.",
+    "officeName": "The Desk",
+    "theme": "studio",
+    "item": "Issue",
+    "deliverable": "files",
+    "stages": [
+      {
+        "id": "research",
+        "name": "Research",
+        "owner": "researcher",
+        "gate": "none",
+        "description": "Five to eight stories, each with a source link and why it matters to readers, are in shared/research/."
+      },
+      {
+        "id": "draft",
+        "name": "Draft",
+        "owner": "writer",
+        "gate": "review",
+        "reviewer": "editor",
+        "description": "The full issue, in the newsletter format, is in shared/issues/."
+      },
+      {
+        "id": "final",
+        "name": "Final",
+        "owner": "editor",
+        "gate": "ceo",
+        "description": "The issue is checked, trimmed to length and ready to send."
+      }
+    ],
+    "roles": {
+      "lead": {
+        "title": "Editor-in-chief",
+        "can": [
+          "plan",
+          "assign",
+          "review",
+          "hire"
+        ],
+        "instructions": "You run the newsletter. Each issue is one task that moves Research → Draft → Final.\n- When the CEO asks for an issue (or the weekly schedule does), create the task with the issue's date, theme and audience.\n- Keep the brief up to date: who reads it, the tone, the length, what to avoid.\n- When an issue is approved, report to the CEO with where it is and what's planned next.\n"
+      },
+      "researcher": {
+        "title": "Researcher",
+        "can": [
+          "work"
+        ],
+        "instructions": "- Find the week's stories that matter to the readers in the brief. Prefer primary sources.\n- For each: the headline, two sentences on why it matters, the source link and the date you checked it.\n- Write them to shared/research/<issue>.md and share it.\n"
+      },
+      "writer": {
+        "title": "Writer",
+        "can": [
+          "work"
+        ],
+        "instructions": "- Write the issue from the research notes only; never add facts without a source.\n- Follow the newsletter-format skill and the brief's tone.\n"
+      },
+      "editor": {
+        "title": "Editor",
+        "can": [
+          "work",
+          "review"
+        ],
+        "instructions": "- Review drafts against the brief and the newsletter-format skill: facts, tone, length, links.\n- Send back with specific fixes; approve only what you'd send yourself.\n"
+      }
+    },
+    "team": [
+      {
+        "name": "Nora",
+        "role": "lead"
+      },
+      {
+        "name": "Leo",
+        "role": "researcher"
+      },
+      {
+        "name": "Ada",
+        "role": "writer"
+      },
+      {
+        "name": "Sam",
+        "role": "editor"
+      }
+    ],
+    "autonomy": {
+      "hire": "notify",
+      "dismiss": "notify"
+    },
+    "maxAgents": 6,
+    "brief": "# Brief\n\nWho reads the newsletter, what they want from it, the tone, and the length. (Replace this with your own.)\n",
+    "toolkits": [
+      {
+        "id": "documents",
+        "roles": [
+          "writer",
+          "editor"
+        ]
+      },
+      {
+        "id": "writing",
+        "roles": [
+          "writer",
+          "editor"
+        ]
+      }
+    ],
+    "skills": [
+      {
+        "name": "newsletter-format",
+        "roles": [
+          "writer",
+          "editor"
+        ]
+      }
+    ],
+    "schedules": [
+      {
+        "id": "weekly-issue",
+        "name": "Weekly issue",
+        "enabled": false,
+        "action": "task",
+        "text": "This week's issue: research, draft, edit. Theme and audience as in the brief.",
+        "title": "Issue for the week of {date}",
+        "every": "week",
+        "at": "09:00",
+        "day": 1
+      }
+    ]
+  },
+  "files": {
+    "skills/newsletter-format/SKILL.md": "---\nname: newsletter-format\ndescription: \"Use when writing or editing an issue of the newsletter: its sections, length and style.\"\n---\n\n# Newsletter format\n\nEvery issue has, in order:\n\n1. **Subject line**: under 60 characters, says what's inside.\n2. **Opening**: two or three sentences on the week's theme.\n3. **Stories**: 4 to 6, each a bold headline, 60 to 100 words, and a \"Read more\" link to the source.\n4. **One thing to try**: a practical tip readers can act on this week.\n5. **Sign-off**: one line.\n\nStyle: plain words, short sentences, no jargon the brief doesn't allow. Every claim links to its source. The whole issue reads in under five minutes (about 900 words).\n"
+  }
+}

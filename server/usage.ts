@@ -339,6 +339,7 @@ export class Budgets {
       const was = this.holds.get(a.id) ?? null;
       const now = next.get(a.id) ?? null;
       if (was === now) continue;
+      this.hub.audit("budget", now ? `Paused ${a.name}: ${now}` : `${a.name} may go on (budget raised, or you said keep going)`, a.id, "hq");
       this.hub.setStatus(a.id, { held: now });
       if (!now) this.actions.release(a.id);
     }

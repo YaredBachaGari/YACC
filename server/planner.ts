@@ -76,6 +76,10 @@ export class Planner {
     return board;
   }
 
+  snapshotTasks() {
+    return this.snap.tasks;
+  }
+
   updateBoard(id: string, patch: Partial<Pick<Board, "title" | "status">>) {
     const board = this.snap.boards.find((b) => b.id === id);
     if (!board) throw new Error(`No board ${id}`);
@@ -142,6 +146,7 @@ export class Planner {
     this.hub.setStatus(agentId, { currentTaskId: task.id });
     this.hub.planChanged();
     this.hub.activity("task.assigned", byId === "you" ? null : byId, `${this.hub.name(byId)} assigned ${task.id} ${task.title} to ${agent.name}`);
+    this.hub.audit("assign", `Assigned ${task.id} "${task.title}" to ${agent.name}`, task.id, byId);
     const by = byId === "you" ? "The user (your human)" : this.hub.name(byId);
     const text = `${by} assigned you ${task.id} (${task.title}). ${this.hub.repo.github ? "Pull main, start" : "Start"} ${task.id}. Call the hq get_my_task tool for the details.`;
     this.record(byId, agentId, `Start ${task.id}: ${task.title}`);
@@ -275,6 +280,7 @@ export class Planner {
     const stage = stageOf(this.wf, task);
     const by = me === CEO_ID ? this.snap.config.ceo.name : this.hub.name(byId);
     const clean = note?.trim().slice(0, 600);
+    this.hub.audit(me === CEO_ID ? "approval" : "review", `Approved ${stage.name} on ${task.id} "${task.title}"${clean ? `: ${clean}` : ""}`, task.id, byId);
     if (task.ownerId) this.notify(task.ownerId, `${by} approved ${task.id} (${stage.name})${clean ? `: ${clean}` : "."}`);
     return this.advance(task, me === CEO_ID ? null : byId, `${by} approved ${stage.name} on ${task.id}${clean ? `: ${clean}` : ""}`);
   }
@@ -290,6 +296,7 @@ export class Planner {
     if (!what) throw new Error("Say what needs to change.");
     const stage = stageOf(this.wf, task);
     const by = me === CEO_ID ? this.snap.config.ceo.name : this.hub.name(byId);
+    this.hub.audit(me === CEO_ID ? "approval" : "review", `Sent ${task.id} "${task.title}" back (${stage.name}): ${what}`, task.id, byId);
     task.reviewerId = null;
     task.note = `Changes requested by ${by}: ${what}`.slice(0, 600);
     task.status = task.ownerId ? "in-progress" : "todo";

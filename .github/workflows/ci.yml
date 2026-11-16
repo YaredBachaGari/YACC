@@ -46,6 +46,10 @@ jobs:
         run: npx tsx scripts/toolkits-test.ts
       - name: Channels, messaging rules and schedules
         run: npx tsx scripts/channels-test.ts
+      - name: Audit log, retrospectives, sharing templates, projects
+        run: npx tsx scripts/hardening-test.ts
+      - name: The template gallery is up to date
+        run: npx tsx scripts/build-gallery.ts --check
       - name: Session backends (fake agent)
         run: npx tsx scripts/session-backend-test.ts
       - name: Agent clones (line endings)
@@ -58,6 +62,12 @@ jobs:
       - name: Install and run like a new user
         shell: bash
         run: node scripts/smoke-test.mjs pack/*.tgz 7431
+      - name: Definitions of done (install it, run a shared template)
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          command -v tmux || sudo apt-get install -y -qq tmux
+          node scripts/acceptance-test.mjs pack/*.tgz 7451
       - if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v4
         with:
@@ -76,6 +86,8 @@ jobs:
         with:
           name: package
           path: pack
-      - run: apt-get update -qq && apt-get install -y -qq git >/dev/null
+      - run: apt-get update -qq && apt-get install -y -qq git tmux >/dev/null
       - run: "! command -v make && ! command -v g++ && ! command -v python3"
       - run: node scripts/smoke-test.mjs pack/*.tgz 7431
+      - name: An outsider installs it and runs a shared template
+        run: node scripts/acceptance-test.mjs pack/*.tgz 7451

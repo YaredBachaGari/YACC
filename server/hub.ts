@@ -8,8 +8,14 @@ import { normalizeConfig } from "../src/data/roles";
 import { placeTasks } from "../src/data/workflow";
 import { saveConfig, savePlan, type PlanFile } from "./store";
 import type { RepoInfo } from "./repo";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { describeConfigChange, type AuditKind } from "../src/data/audit";
+import type { AuditLog } from "./audit";
 
 type Listener = (e: OfficeEvent) => void;
+
+/** Who is acting right now (for the audit log): "you" for browser commands, an agent id for its tools. */
+const acting = new AsyncLocalStorage<string>();
 
 const now = () => new Date().toISOString();
 
@@ -17,6 +23,10 @@ export class Hub {
   snap: OfficeSnapshot;
   private listeners = new Set<Listener>();
   private seq = 0;
+  /** Where audit entries go (none in most tests). */
+  auditLog: AuditLog | null = null;
+  /** The config as last saved, to say what each change changed. */
+  private savedConfig: HqConfig;
 
   constructor(readonly repo: RepoInfo, readonly slug: string, config: HqConfig, plan: PlanFile, setup: SetupState) {
     this.snap = {
@@ -33,6 +43,22 @@ export class Hub {
     };
     // Plans from before stages: every task starts in the first stage.
     placeTasks(config.workflow, this.snap.tasks);
+    this.savedConfig = structuredClone(config);
+  }
+
+  /** Runs fn (and everything it awaits) as `actor`, for the audit log. */
+  static as<T>(actor: string, fn: () => T): T {
+    return acting.run(actor, fn);
+  }
+
+  /** Who is acting now: set by Hub.as, else HQ itself. */
+  get actor(): string {
+    return acting.getStore() ?? "hq";
+  }
+
+  /** Records something in the audit log. The actor defaults to whoever is acting now. */
+  audit(kind: AuditKind, summary: string, target?: string, actor?: string) {
+    this.auditLog?.record({ kind, actor: actor ?? this.actor, summary, ...(target ? { target } : {}) });
   }
 
   /** After the stages change: tasks in a stage that no longer exists go to the first one. */
@@ -139,6 +165,7 @@ export class Hub {
   configChanged() {
     normalizeConfig(this.snap.config);
     saveConfig(this.repo.root, this.snap.config);
+    this.auditConfig(this.actor);
     this.emit({ type: "config.updated", config: structuredClone(this.snap.config) });
     this.replaceTasks();
   }
@@ -156,6 +183,7 @@ export class Hub {
     next.project.path = cur.project.path;
     next.project.hqPort = cur.project.hqPort;
     this.snap.config = next;
+    this.auditConfig("config.yml");
     const removed = this.snap.agents.filter((s) => !nextIds.has(s.agentId)).map((s) => s.agentId);
     this.snap.agents = this.snap.agents.filter((s) => nextIds.has(s.agentId));
     for (const a of next.team) if (!this.status(a.id)) this.snap.agents.push(Hub.freshStatus(a.id));
@@ -168,6 +196,13 @@ export class Hub {
     placeTasks(next.workflow, this.snap.tasks);
     this.emit({ type: "snapshot", snapshot: structuredClone(this.snap) });
     return null;
+  }
+
+  /** One audit entry per settings change, saying what changed. */
+  private auditConfig(actor: string) {
+    const changes = describeConfigChange(this.savedConfig, this.snap.config);
+    this.savedConfig = structuredClone(this.snap.config);
+    if (changes.length) this.audit("config", `Changed ${changes.join("; ")}`, undefined, actor);
   }
 
   planChanged() {

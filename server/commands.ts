@@ -18,7 +18,7 @@ import type { Sessions } from "./sessions";
 import { newAgent, removeRoleFile } from "./store";
 import type { Team } from "./team";
 import type { Briefings } from "./briefings";
-import { listTemplates, saveTemplate } from "./templates";
+import { listTemplates, refreshTemplates, saveTemplate } from "./templates";
 import { BUILT_IN_TEMPLATES, libraryCard, roleFromCard } from "../src/data/templates";
 import { PROVIDERS, cleanBudget, cleanRouting } from "../src/data/models";
 import type { Budgets } from "./usage";
@@ -31,6 +31,7 @@ import { mcpFor } from "../src/data/models";
 import { cleanMessaging } from "../src/data/messaging";
 import { cleanSchedules } from "../src/data/schedules";
 import type { Scheduler } from "./scheduler";
+import type { Retros } from "./retros";
 import { cleanAvatar, cleanBio, cleanTheme } from "../src/data/profile";
 import type { AvatarConfig } from "../src/data/types";
 
@@ -70,7 +71,7 @@ const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(
 const str = (v: unknown, max = 2000) => (typeof v === "string" ? v.slice(0, max) : "");
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
 
-export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx: Sbx, mcp: SbxMcp, teamOps: Team, extra: { briefings: Briefings; memory: Memory; budgets?: Budgets; scheduler?: Scheduler }) {
+export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx: Sbx, mcp: SbxMcp, teamOps: Team, extra: { briefings: Briefings; memory: Memory; budgets?: Budgets; scheduler?: Scheduler; retros?: Retros }) {
   /** Runs an sbx change and reports failures in the activity feed. */
   const attempt = async (agentId: string | null, what: string, fn: () => Promise<void>) => {
     try {
@@ -329,12 +330,14 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx
       const svc = str(service, 40);
       if (!(SERVICE_KEYS as readonly string[]).includes(svc) || typeof value !== "string" || !value.trim()) return;
       if (agentId && !hub.cfg(agentId)) return;
+      hub.audit("secret", `Set the ${svc} key ${agentId ? `for ${hub.name(agentId)}'s sandbox` : "for every sandbox"} (the value isn't recorded)`, agentId ?? undefined);
       return attempt(agentId, `Stored the ${svc} key ${agentId ? `for ${hub.name(agentId)}'s sandbox` : "for every sandbox"}`, () => sbx.setKey(agentId, svc, value));
     },
     removeSecret: (id, service) => {
       const agentId = id === null ? null : str(id, 80);
       const svc = str(service, 40);
       if (!(SERVICE_KEYS as readonly string[]).includes(svc)) return;
+      hub.audit("secret", `Removed the ${svc} key ${agentId ? `from ${hub.name(agentId)}'s sandbox` : "from every sandbox"}`, agentId ?? undefined);
       return attempt(agentId, `Removed the ${svc} key ${agentId ? `from ${hub.name(agentId)}'s sandbox` : "from every sandbox"}`, () => sbx.removeKey(agentId, svc));
     },
     setProxy: (url) => {
@@ -356,8 +359,8 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx
     markBriefingsRead: () => extra.briefings.markAllRead(),
     saveTemplate: (name, where, description) => {
       const dir = saveTemplate(hub.snap.config, extra.memory.read().brief, str(name, 60), where === "user" ? "user" : "project", hub.repo.root, typeof description === "string" ? str(description, 300) : "");
-      hub.snap.templates = listTemplates(hub.repo.root).templates;
-      hub.emit({ type: "snapshot", snapshot: structuredClone(hub.snap) });
+      refreshTemplates(hub);
+      hub.audit("template", `Saved the setup as the template "${str(name, 60)}" (${where === "user" ? "for you" : "in this project"})`);
       hub.activity("config", null, `Saved the template "${str(name, 60)}" to ${dir}. ${where === "user" ? "It is offered when you set up any new project on this machine." : "Commit .yacc/templates/ to share it."}`);
     },
 
@@ -421,6 +424,12 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx
     },
 
     runSchedule: (id) => void extra.scheduler?.runNow(str(id, 80)),
+
+    /** Asks the lead to look back on a board (the last one done, when none is given). */
+    requestRetrospective: (boardId) => {
+      const why = extra.retros?.ask(typeof boardId === "string" && boardId ? str(boardId, 20) : undefined);
+      if (why) hub.activity("config", null, `No retrospective: ${why}`);
+    },
 
     /** Channels and who may message whom. Agents are told on their next start; the rules apply right away. */
     updateMessaging: (raw) => {
@@ -522,6 +531,8 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx
         used.add(id);
         const agent = newAgent(id, clean, roleId, agentPalette[used.size - 1] ?? agentPalette[0], reportsTo);
         agent.cli = agentCli;
+        // No sandboxes on this machine but Local mode works: start there, so the team can start right away.
+        if (!hub.snap.setup.sandboxReady && hub.snap.setup.localReady) agent.mode = "local";
         return agent;
       };
       const lead = make(input.lead?.name ?? LEAD_NAME, LEAD_ROLE_ID, cli(input.lead?.cli), CEO_ID);
@@ -590,6 +601,10 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, sbx
         })); // normalizeConfig (in configChanged) checks owners, gates and ids
       Object.assign(wf.review, p.review ?? {});
       if (p.merge?.by === "human" || p.merge?.by === "lead") wf.merge.by = p.merge.by;
+      if (typeof p.retrospective === "boolean") {
+        if (p.retrospective) delete wf.retrospective;
+        else wf.retrospective = false;
+      }
       Object.assign(wf.deploy, p.deploy ?? {});
       hub.configChanged();
       if (wf.deliverable !== deliverableBefore) void sessions.recheckSetup();

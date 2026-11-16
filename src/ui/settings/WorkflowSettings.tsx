@@ -12,6 +12,25 @@ const REVIEW_HINT: Record<ReviewTool, string> = {
   custom: "Runs your command; exit code 0 = passed, anything else = changes.",
 };
 
+/** Retrospectives (plan step 7.5): the lead looks back when a board is done and proposes changes to roles. */
+function RetroSection({ on }: { on: boolean }) {
+  return (
+    <section className="border-[3px] border-ink bg-white p-3">
+      <div className="mb-2 flex items-center gap-2">
+        <SectionTitle>Retrospectives</SectionTitle>
+        <span className="flex-1" />
+        <Toggle checked={on} onChange={(v) => officeActions.updateWorkflow({ retrospective: v })} label={on ? "When a board is done" : "Off"} />
+        <button className="btn px-2 text-[13px]" onClick={() => officeActions.requestRetrospective()} title="On the last board that's done">
+          Ask for one now
+        </button>
+      </div>
+      <p className="m-0 text-[13px] text-muted">
+        The lead looks back on the board (work sent back, blocked tasks, lessons) and proposes changes to role instructions. Each proposal comes to you in Action items with the change line by line: accept it and the role's instructions are rewritten, or reject it with a note.
+      </p>
+    </section>
+  );
+}
+
 export function WorkflowSettings() {
   const wf = useOffice((s) => s.snap?.config.workflow);
   // Deploy isn't built in real HQ yet (only the demo shows environments), so it's shown as coming soon.
@@ -27,11 +46,13 @@ export function WorkflowSettings() {
     return (
       <div className="flex flex-col gap-6">
         <StagesSection />
+        <RetroSection on={wf.retrospective !== false} />
       </div>
     );
   return (
     <div className="flex flex-col gap-6">
       <StagesSection />
+      <RetroSection on={wf.retrospective !== false} />
       <section>
         <SectionTitle>Pull requests on GitHub</SectionTitle>
         <div className="flex flex-wrap items-center gap-2 text-[14px]">

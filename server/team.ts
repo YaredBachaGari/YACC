@@ -167,6 +167,7 @@ export class Team {
     });
     const what = `${by.name} hired ${agent.name} (${role.title}${agent.temporary ? ", temporary" : ""}${created ? ", new role" : ""}): ${reason.slice(0, 200)}`;
     this.hub.activity("config", by.id, what);
+    this.hub.audit("team", `Hired ${agent.name} (${role.title}${agent.temporary ? ", temporary" : ""})${approved ? " with your approval" : ""}: ${reason}`, agent.id, by.id);
     if (mode === "notify") this.deps.notice?.(by.id, what);
     void Promise.resolve(this.deps.start(agent.id)).catch(() => {});
     const left = max - this.cfg.team.length;
@@ -194,6 +195,7 @@ export class Team {
     const { freedTasks } = await this.remove(agent.id, { deleteSandbox: true, deleteFolder: false });
     const what = `${by.name} dismissed ${agent.name} (${role})${reason?.trim() ? `: ${reason.trim().slice(0, 200)}` : ""}. Their folder is kept.`;
     this.hub.activity("config", by.id, what);
+    this.hub.audit("team", `Dismissed ${agent.name} (${role})${approved ? " with your approval" : ""}${reason?.trim() ? `: ${reason.trim()}` : ""}`, agent.id, by.id);
     if (mode === "notify") this.deps.notice?.(by.id, what);
     return `Dismissed ${agent.name}.${freedTasks.length ? ` Their unfinished tasks are unassigned again: ${freedTasks.join(", ")}.` : ""}`;
   }

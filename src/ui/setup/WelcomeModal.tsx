@@ -3,6 +3,7 @@ import { LEAD_NAME, nextAgentName, WORKER_NAMES } from "../../data/names";
 import { TOOLKIT_CATALOG, type ToolkitChoice } from "../../data/toolkits";
 import { EMPTY_STACK, frameworks, STACK_CATEGORIES, toolsIn, type StackConfig } from "../../data/stack";
 import { BUILT_IN_TEMPLATES, ROLE_LIBRARY, type Template } from "../../data/templates";
+import { TemplateImport } from "../settings/TemplatesSettings";
 import { LEAD_ROLE_ID, type AgentCli, type ReviewTool } from "../../data/types";
 import { officeActions, reviewToolLabel, useOffice } from "../../store/office";
 import { agentPalette } from "../../theme/tokens";
@@ -180,6 +181,7 @@ export function WelcomeModal() {
 
 /** Step 1: what the team is for. */
 function PickTemplate({ templates, repo, github, onPick }: { templates: Template[]; repo: string; github: boolean; onPick: (t: Template) => void }) {
+  const [importing, setImporting] = useState(false);
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-[rgba(36,26,46,0.55)] p-4" role="dialog" aria-modal="true" aria-label="Welcome to YACC">
       <div className="panel flex max-h-[calc(100dvh-2rem)] w-[min(820px,100%)] flex-col">
@@ -203,6 +205,29 @@ function PickTemplate({ templates, repo, github, onPick }: { templates: Template
               <span className="text-[12px] text-muted">Work: {t.stages.map((s) => s.name).join(" → ")}{t.deliverable === "pull-request" ? (github ? ", pull requests on GitHub" : ", files (no GitHub remote)") : ", files"}</span>
             </button>
           ))}
+          <div className="flex flex-col gap-2 border-[3px] border-dashed border-ink p-3 sm:col-span-2">
+            <div className="flex items-center gap-2">
+              <b className="flex-1 text-[15px]">Someone shared a template with you?</b>
+              <button className="btn px-2 text-[13px]" aria-expanded={importing} onClick={() => setImporting(!importing)}>
+                {importing ? "Close" : "Install a template"}
+              </button>
+            </div>
+            {importing ? (
+              <TemplateImport
+                onInstalled={(id) => {
+                  // The new template list arrives over the WebSocket, maybe just after the install answers.
+                  const pick = (tries: number) => {
+                    const t = useOffice.getState().snap?.templates?.find((x) => x.id === id);
+                    if (t) onPick(t);
+                    else if (tries > 0) setTimeout(() => pick(tries - 1), 100);
+                  };
+                  pick(20);
+                }}
+              />
+            ) : (
+              <span className="text-[12px] text-muted">From a file, a link, or the public gallery. You see what it adds before anything is installed.</span>
+            )}
+          </div>
         </div>
       </div>
     </div>

@@ -271,6 +271,8 @@ export interface WorkflowConfig {
   deliverable: DeliverableKind;
   /** In order. Every new item starts in the first. */
   stages: StageConfig[];
+  /** When a board is done, the lead looks back and proposes changes to role instructions. Left out: on. */
+  retrospective?: boolean;
   review: { enabled: boolean; tool: ReviewTool; command: string };
   merge: { by: "human" | "lead" };
   deploy: { enabled: boolean; tool: DeployTool; command: string; perAgentEnvironments: boolean };
@@ -663,7 +665,7 @@ export interface ProjectMemory {
 export interface ActionItem {
   id: string;
   /** "request": an agent asked you for something (ask_user). "approval": work waits for your sign-off at a stage gate. */
-  kind?: "request" | "approval" | "hire" | "dismiss" | "budget" | "limit";
+  kind?: "request" | "approval" | "hire" | "dismiss" | "budget" | "limit" | "role-change";
   /** hire / dismiss: what the agent asked to do, carried out if you approve. */
   payload?: Record<string, unknown>;
   fromId: string; // agent id
@@ -729,6 +731,7 @@ export interface OrgPatch {
 
 export interface WorkflowPatch {
   item?: string;
+  retrospective?: boolean;
   deliverable?: DeliverableKind;
   stages?: StageConfig[];
   review?: Partial<WorkflowConfig["review"]>;

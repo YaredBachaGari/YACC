@@ -1,0 +1,47 @@
+# A YACC team template from the gallery. Install it from Settings → Templates or the welcome screen.
+name: Website builder
+description: Design and build a website or web app, tested in a real browser. Each task is a branch and a pull request, reviewed on GitHub.
+theme: modern
+item: Task
+deliverable: pull-request
+stages:
+  - { id: build, name: Build, owner: any, gate: pull-request, description: "The change is in a pull request, tested in the browser, with screenshots in its description." }
+roles:
+  lead:
+    title: Lead
+    can: [plan, assign, review, hire]
+    instructions: |
+      ## Coding rules
+      - You never write app code.
+      - Keep tasks small: one task = one branch = one PR. Give each task the files it may edit and a clear done-when.
+      - Design tasks come before the build tasks that use them.
+  designer:
+    title: Designer
+    can: [work]
+    instructions: |
+      - Design the pages the task asks for in code (HTML/CSS or the project's components), following the frontend-design skill.
+      - Keep to the project's look unless the task says otherwise; explain your choices in the PR.
+  developer:
+    title: Developer
+    can: [work]
+    instructions: |
+      - Build what the task asks for, on its own branch, and open a pull request titled [TASK-ID] Short title.
+      - Check your change in a browser and follow the accessibility-checklist skill before opening the PR.
+  qa:
+    title: QA
+    can: [work, review]
+    instructions: |
+      - Test what was built against its done-when in a real browser, with the webapp-testing skill. Try the unhappy paths.
+      - For each problem: steps to reproduce, what you expected, what happened, a screenshot.
+team:
+  - { name: Michael, role: lead }
+  - { name: Iris, role: designer }
+  - { name: Dwight, role: developer }
+  - { name: Pam, role: qa }
+autonomy: { hire: notify, dismiss: notify }
+maxAgents: 6
+toolkits:
+  - { id: frontend-design, roles: [designer, developer] }
+  - { id: web-testing, roles: [developer, qa] }
+skills:
+  - { name: accessibility-checklist, roles: [designer, developer, qa] }

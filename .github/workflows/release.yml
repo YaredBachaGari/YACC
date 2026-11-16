@@ -1,0 +1,50 @@
+# Publishes yacc-hq to npm when a version tag is pushed (v0.12.0, …), after the same build and
+# tests as CI, and attaches the package to a GitHub release. Needs the NPM_TOKEN repository
+# secret (an npm automation token). See docs/releasing.md.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  id-token: write # npm provenance
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - name: The tag matches package.json
+        run: |
+          v="$(node -p "require('./package.json').version")"
+          [ "v$v" = "$GITHUB_REF_NAME" ] || { echo "Tag $GITHUB_REF_NAME doesn't match package.json version $v"; exit 1; }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Tests
+        run: |
+          for t in path roles workflow teamwork templates models usage profiles editors toolkits channels hardening session-backend workspace; do npx tsx scripts/$t-test.ts; done
+          npx tsx scripts/build-gallery.ts --check
+      - run: mkdir -p pack && npm pack --ignore-scripts --pack-destination pack
+      - name: Install it like a new user and run a shared template
+        run: |
+          command -v tmux || sudo apt-get install -y -qq tmux
+          node scripts/smoke-test.mjs pack/*.tgz 7431
+          node scripts/acceptance-test.mjs pack/*.tgz 7451
+      - name: Publish to npm
+        run: npm publish pack/*.tgz --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" pack/*.tgz --title "YACC $GITHUB_REF_NAME" --notes-file <(awk "/^## ${GITHUB_REF_NAME#v}/{f=1;next} /^## /{f=0} f" CHANGELOG.md)
