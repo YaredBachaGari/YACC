@@ -183,6 +183,7 @@ const fileSchema = z.object({
         }),
       )
       .default(codingStages()),
+    retrospective: z.boolean().optional(),
     review: z.object({ enabled: z.boolean(), tool: z.enum(["coderabbit", "greptile", "copilot", "human", "custom"]), command: z.string().default("") }),
     merge: z.object({ by: z.enum(["human", "lead"]) }),
     deploy: z.object({ enabled: z.boolean(), tool: z.enum(["instacloud", "vercel", "custom"]), command: z.string().default(""), perAgentEnvironments: z.boolean().default(false) }),

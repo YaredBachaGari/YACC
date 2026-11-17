@@ -18,19 +18,13 @@ Settings live in `.yacc/config.yml` and `.yacc/roles/`: edit them in the app or 
 
 ## Quick start
 
-YACC is not on npm yet. Install it once from source (needs Node.js 20+ and pnpm):
+Needs Node.js 20+. From inside a git repo (for pull requests, one with a GitHub remote):
 
 ```bash
-git clone https://github.com/YaredBachaGari/YACC && cd YACC
-pnpm install && pnpm build
-npm link            # makes the yacc-hq command available
+npx yacc-hq
 ```
 
-Then, from inside a git repo that has a GitHub remote:
-
-```bash
-yacc-hq
-```
+Or install the command once: `npm install -g yacc-hq`, then run `yacc-hq`.
 
 HQ opens in your browser and walks you through the rest:
 
@@ -57,7 +51,17 @@ yacc-hq --repo <path>   the repo to manage (default: current folder)
         --version, --help
 ```
 
-To update: `git pull`, then `pnpm install && pnpm build` in the YACC folder.
+To update: `npm install -g yacc-hq@latest` (or just `npx yacc-hq@latest`). To run from source instead: clone the repo, `pnpm install && pnpm build && npm link`.
+
+### Templates
+
+Pick what the team is for on the welcome screen. Each has a getting-started guide: [Software Team](docs/templates/software-team.md), [Content Studio](docs/templates/content-studio.md), [R&D Lab](docs/templates/rd-lab.md), [Start with a lead](docs/templates/lead-only.md), and from the gallery [Newsletter desk](docs/templates/newsletter-desk.md), [Market research](docs/templates/market-research.md) and [Website builder](docs/templates/website-builder.md). Save your own team as a template and share it: [Sharing templates](docs/sharing-templates.md).
+
+How each phase's "done when" is checked: [Definitions of done](docs/acceptance.md).
+
+### Several projects
+
+Run HQ in each repo. Click the project name in the top bar to switch: a stopped project starts in the background when you open it.
 
 ## Requirements
 

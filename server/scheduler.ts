@@ -9,7 +9,7 @@ import { isChannel } from "../src/data/messaging";
 import { leadOf } from "../src/data/roles";
 import { fill, isDue, nextRun, type Schedule, type ScheduleEvent, type ScheduleStatus } from "../src/data/schedules";
 import type { OfficeEvent } from "../src/data/source";
-import type { Hub } from "./hub";
+import { Hub } from "./hub";
 import { projectHome } from "./paths";
 import type { Planner } from "./planner";
 
@@ -137,12 +137,13 @@ export class Scheduler {
     const tag = `[Schedule: ${s.name}]`;
     let result: string;
     try {
-      result = s.action === "task" ? this.addTask(s, v, tag) : this.sendMessage(s, v, tag);
+      result = Hub.as(manual ? "you" : `schedule:${s.id}`, () => (s.action === "task" ? this.addTask(s, v, tag) : this.sendMessage(s, v, tag)));
       this.hub.activity("config", null, `${manual ? "You ran" : "Schedule"} "${s.name}": ${result}`);
     } catch (err) {
       result = `Didn't run: ${err instanceof Error ? err.message : String(err)}`;
       this.hub.activity("config", null, `Schedule "${s.name}" ${result.charAt(0).toLowerCase()}${result.slice(1)}`);
     }
+    this.hub.audit("schedule", `${manual ? "Ran now" : "Ran"} "${s.name}": ${result}`, s.id, manual ? "you" : `schedule:${s.id}`);
     this.kept[s.id] = { seen: this.kept[s.id]?.seen ?? now.toISOString(), lastRun: now.toISOString(), lastResult: result };
     this.save();
     this.publish();

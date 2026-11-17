@@ -136,7 +136,7 @@ export const COMMON_TOOLS = ["list_workers", "get_status", "list_tasks", "send_m
 
 /** Tools a permission unlocks. `review` and `approve` gain tools with the workflow engine (Phase 2). */
 export const PERMISSION_TOOLS: Record<Permission, readonly string[]> = {
-  plan: ["create_board", "create_task", "update_task", "report_to_ceo", "update_brief"],
+  plan: ["create_board", "update_board", "create_task", "update_task", "report_to_ceo", "update_brief", "read_role", "propose_role_change"],
   assign: ["assign_task"],
   work: ["get_my_task", "set_my_status", "complete_stage"],
   review: ["approve_work", "request_changes"],

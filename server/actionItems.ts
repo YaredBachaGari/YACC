@@ -86,6 +86,45 @@ export class ActionItems {
     return item;
   }
 
+  /**
+   * A change to a role's instructions, proposed by the lead in a retrospective (plan step 7.5).
+   * The CEO accepts it (the role's instructions become the new text) or rejects it with a note.
+   */
+  addRoleChange(fromId: string, roleId: string, after: string, reason: string): ActionItem {
+    const role = this.hub.snap.config.roles.find((r) => r.id === roleId);
+    if (!role) throw new Error(`No role "${roleId}".`);
+    const before = role.instructions;
+    if (before.trim() === after.trim()) throw new Error("Those are the role's instructions already.");
+    // One open proposal per role: a newer one replaces it.
+    for (const old of this.items)
+      if (old.kind === "role-change" && old.status === "open" && old.payload?.roleId === roleId) {
+        old.status = "dismissed";
+        old.note = "Replaced by a newer proposal.";
+        old.closedAt = new Date().toISOString();
+        this.hub.emit({ type: "action.updated", item: { ...old } });
+      }
+    const item: ActionItem = {
+      id: `ai${Date.now().toString(36)}${++this.seq}`,
+      kind: "role-change",
+      payload: { roleId, before, after: after.trim(), reason: reason.trim() },
+      fromId,
+      taskId: null,
+      title: `Change the ${role.title} role's instructions`,
+      details: reason.trim().slice(0, 2000),
+      waiting: false,
+      status: "open",
+      note: null,
+      at: new Date().toISOString(),
+      closedAt: null,
+    };
+    this.items.unshift(item);
+    this.save();
+    this.hub.emit({ type: "action.updated", item: { ...item } });
+    this.hub.activity("agent.needs-input", fromId, `${this.hub.name(fromId)} proposes a change to the ${role.title} role (retrospective)`);
+    this.hub.audit("retro", `Proposed a change to the ${role.title} role: ${reason.trim()}`, roleId, fromId);
+    return item;
+  }
+
   /** Work waiting for the CEO's sign-off at a stage gate. Closing it approves the work or sends it back. */
   addApproval(fromId: string, taskId: string, title: string, details: string): ActionItem {
     // One open approval per task.
@@ -113,6 +152,7 @@ export class ActionItems {
     const item = this.items.find((i) => i.id === id);
     if (!item || item.status !== "open") return;
     if (item.kind === "hire" || item.kind === "dismiss" || item.kind === "budget" || item.kind === "limit") {
+      this.hub.audit(item.kind === "hire" || item.kind === "dismiss" ? "team" : "budget", `${decision === "done" ? "Approved" : "Declined"}: ${item.title}${note?.trim() ? ` (${note.trim()})` : ""}`, item.fromId, "you");
       item.status = decision;
       item.note = note?.trim().slice(0, 1000) || null;
       item.closedAt = new Date().toISOString();
@@ -121,6 +161,26 @@ export class ActionItems {
       void Promise.resolve(this.onDecision?.(item, decision, item.note)).catch((err) =>
         this.planner.notify(item.fromId, `The CEO approved "${item.title}", but it couldn't be done: ${err instanceof Error ? err.message : err}`),
       );
+      return;
+    }
+    if (item.kind === "role-change") {
+      const roleId = String(item.payload?.roleId ?? "");
+      const role = this.hub.snap.config.roles.find((r) => r.id === roleId);
+      const n = note?.trim() ? ` Note from the CEO: ${note.trim()}` : "";
+      item.status = decision;
+      item.note = note?.trim().slice(0, 1000) || null;
+      item.closedAt = new Date().toISOString();
+      if (decision === "done" && role) {
+        role.instructions = String(item.payload?.after ?? role.instructions);
+        this.hub.configChanged();
+        this.hub.audit("retro", `Accepted the change to the ${role.title} role`, roleId, "you");
+        this.planner.notify(item.fromId, `The CEO accepted your change to the ${role.title} role. Agents with it get the new instructions on their next start.${n}`);
+      } else {
+        this.hub.audit("retro", `Rejected the change to the ${role?.title ?? roleId} role${note?.trim() ? `: ${note.trim()}` : ""}`, roleId, "you");
+        this.planner.notify(item.fromId, role ? `The CEO rejected your change to the ${role.title} role.${n}` : `Your change to the ${roleId} role wasn't applied: the role no longer exists.`);
+      }
+      this.save();
+      this.hub.emit({ type: "action.updated", item: { ...item } });
       return;
     }
     if (item.kind === "approval" && item.taskId) {
@@ -135,6 +195,7 @@ export class ActionItems {
       this.hub.emit({ type: "action.updated", item: { ...item } });
       return;
     }
+    this.hub.audit("approval", `${decision === "done" ? "Did" : "Dismissed"} the action item "${item.title}" from ${this.hub.name(item.fromId)}`, item.fromId, "you");
     item.status = decision;
     item.note = note?.trim().slice(0, 1000) || null;
     item.closedAt = new Date().toISOString();

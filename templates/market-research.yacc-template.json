@@ -1,0 +1,130 @@
+{
+  "format": "yacc-template",
+  "version": 1,
+  "template": {
+    "name": "Market research",
+    "description": "Questions in, a sourced report out. Scope the question, research it, analyse what was found, and you approve the report.",
+    "officeName": "Research Room",
+    "theme": "lab",
+    "item": "Question",
+    "deliverable": "files",
+    "stages": [
+      {
+        "id": "scope",
+        "name": "Scope",
+        "owner": "lead",
+        "gate": "none",
+        "description": "The question, what a useful answer looks like and the sources to try are in shared/scope/."
+      },
+      {
+        "id": "research",
+        "name": "Research",
+        "owner": "researcher",
+        "gate": "none",
+        "description": "Findings, each graded with the source-grading skill, are in shared/research/."
+      },
+      {
+        "id": "analyse",
+        "name": "Analyse",
+        "owner": "analyst",
+        "gate": "review",
+        "reviewer": "lead",
+        "description": "The analysis answers the question, says how sure we are, and why."
+      },
+      {
+        "id": "report",
+        "name": "Report",
+        "owner": "analyst",
+        "gate": "ceo",
+        "description": "A two-page report with the answer, the evidence and the open questions."
+      }
+    ],
+    "roles": {
+      "lead": {
+        "title": "Research lead",
+        "can": [
+          "plan",
+          "assign",
+          "review",
+          "hire",
+          "work"
+        ],
+        "instructions": "You turn the CEO's questions into research that answers them.\n- Each question is one task. Do its Scope stage yourself: restate the question, what a useful answer looks like, and where to look.\n- Review analyses for whether they answer the question and how strong the evidence is.\n"
+      },
+      "researcher": {
+        "title": "Researcher",
+        "can": [
+          "work"
+        ],
+        "instructions": "- Find evidence for the scoped question. Prefer primary sources: filings, official statistics, papers, the companies' own pages.\n- Grade every finding with the source-grading skill and keep its link.\n- Write findings to shared/research/<question>.md and share it.\n"
+      },
+      "analyst": {
+        "title": "Analyst",
+        "can": [
+          "work"
+        ],
+        "instructions": "- Work only from the graded findings. Say what they show, what they don't, and how sure we are.\n- Put numbers in tables, with their sources. Write the report for a busy reader: the answer first.\n"
+      }
+    },
+    "team": [
+      {
+        "name": "Rosa",
+        "role": "lead"
+      },
+      {
+        "name": "Leo",
+        "role": "researcher"
+      },
+      {
+        "name": "Kai",
+        "role": "researcher"
+      },
+      {
+        "name": "Alan",
+        "role": "analyst"
+      }
+    ],
+    "autonomy": {
+      "hire": "ask",
+      "dismiss": "notify"
+    },
+    "maxAgents": 6,
+    "brief": "# Brief\n\nThe market or product area, who the research is for, and the decisions it should inform. (Replace this with your own.)\n",
+    "toolkits": [
+      {
+        "id": "documents"
+      },
+      {
+        "id": "web-research",
+        "roles": [
+          "researcher"
+        ]
+      }
+    ],
+    "skills": [
+      {
+        "name": "source-grading",
+        "roles": [
+          "researcher",
+          "analyst"
+        ]
+      }
+    ],
+    "schedules": [
+      {
+        "id": "monthly-roundup",
+        "name": "Monthly roundup",
+        "enabled": false,
+        "action": "message",
+        "text": "Send me a report_to_ceo briefing: the questions answered last month, what we learned, and what's still open.",
+        "to": "lead",
+        "every": "month",
+        "at": "09:00",
+        "day": 1
+      }
+    ]
+  },
+  "files": {
+    "skills/source-grading/SKILL.md": "---\nname: source-grading\ndescription: \"Use when recording or using a research finding: how to grade its source and how much to rely on it.\"\n---\n\n# Source grading\n\nGive every finding a grade, and keep the link and the date you checked it.\n\n| Grade | Source | Use it for |\n| --- | --- | --- |\n| A | Primary and official: filings, statistics offices, the company's own figures, peer-reviewed papers | Numbers and claims in the report |\n| B | Reputable secondary: established news, industry analysts who cite their data | Context; confirm key numbers with an A source |\n| C | Opinion, blogs, forums, undated or unsourced pages | Leads to follow up, never evidence |\n\nTwo independent sources for any number that matters. If sources disagree, record both and say which you trust and why. Never present a C finding as fact.\n"
+  }
+}

@@ -71,8 +71,10 @@ export function CheckRow({ c, running, onRun }: { c: SetupCheck; running: boolea
 /** "Get YACC ready": what's missing on this machine and how to fix it. */
 export function SetupChecklist() {
   const setup = useOffice((s) => s.snap?.setup);
+  const team = useOffice((s) => s.snap?.config.team);
   const [runningId, setRunningId] = useState<string | null>(null);
   if (!setup) return null;
+  const inSandbox = (team ?? []).filter((a) => a.mode === "sandbox");
 
   return (
     <div className="fixed inset-0 z-40 grid place-items-center bg-[rgba(36,26,46,0.55)] p-4" role="dialog" aria-modal="true" aria-label="Setup checklist">
@@ -119,9 +121,17 @@ export function SetupChecklist() {
             </div>
           )}
           {!setup.sandboxReady && setup.localReady && (
-            <p className="mb-2 border-[3px] border-orange bg-[#fff1d6] px-3 py-2 text-[14px]">
-              Sandboxes aren't available here, but Local mode is. Set agents to <b>Local</b> in Settings → Team. They run plain Claude Code in their own folder, with permission prompts on.
-            </p>
+            <div className="mb-2 flex items-center gap-3 border-[3px] border-orange bg-[#fff1d6] px-3 py-2 text-[14px]">
+              <p className="m-0 flex-1">
+                Sandboxes aren't available here, but Local mode is: agents run their program (Claude Code, Codex or Gemini CLI) in their own folder, with permission prompts on.
+                {inSandbox.length ? "" : " Everyone is already in Local mode."}
+              </p>
+              {inSandbox.length > 0 && (
+                <button className="btn shrink-0 text-[13px]" onClick={() => inSandbox.forEach((a) => officeActions.updateAgent(a.id, { mode: "local" }))}>
+                  Switch {inSandbox.length === 1 ? inSandbox[0].name : `all ${inSandbox.length}`} to Local
+                </button>
+              )}
+            </div>
           )}
         </div>
         <div className="flex items-center justify-between gap-3 border-t-[3px] border-ink px-4 py-2">

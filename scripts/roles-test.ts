@@ -187,7 +187,7 @@ const studio = (): HqConfig => parseConfig(STUDIO, (rel) => studioFiles[rel] ?? 
   ok("role file: the lead reports to the CEO by name", lead.includes("You report to Abuti, the CEO (the human)."));
   ok("role file: org chart with reporting lines", lead.includes("- Abuti — CEO (the human)") && lead.includes("- Ada — Writer; reports to Leo"));
   ok("role file: the hirer sees the headcount limit", lead.includes("Headcount limit set by the CEO: 5 agents (the team has 4)."));
-  ok("role file: tools match the role", lead.includes("Your tools: create_board, create_task, update_task, report_to_ceo, update_brief, assign_task, approve_work, request_changes, list_roles, hire_agent, dismiss_agent, list_workers"));
+  ok("role file: tools match the role", lead.includes("Your tools: create_board, update_board, create_task, update_task, report_to_ceo, update_brief, read_role, propose_role_change, assign_task, approve_work, request_changes, list_roles, hire_agent, dismiss_agent, list_workers"));
   const writer = roleMd(c.team[2], c);
   ok("role file: a writer gets writer rules, not coding rules", writer.includes("Write the script from the research.") && !/\bPR\b|gh pr|branch/.test(writer), writer);
   ok("role file: anyone can go to the CEO directly", writer.includes("You don't need to go through the lead for this."));

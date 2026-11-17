@@ -1,0 +1,2 @@
+# Shared templates are compared byte for byte with their bundles (scripts/build-gallery.ts --check).
+templates/** text eol=lf

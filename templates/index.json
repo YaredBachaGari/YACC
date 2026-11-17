@@ -1,0 +1,35 @@
+{
+  "format": "yacc-gallery",
+  "version": 1,
+  "templates": [
+    {
+      "id": "market-research",
+      "name": "Market research",
+      "description": "Questions in, a sourced report out. Scope the question, research it, analyse what was found, and you approve the report.",
+      "url": "market-research.yacc-template.json",
+      "tags": [
+        "research"
+      ]
+    },
+    {
+      "id": "newsletter-desk",
+      "name": "Newsletter desk",
+      "description": "A weekly newsletter. Research the week's stories, write the issue, edit it, and you sign off before it goes out.",
+      "url": "newsletter-desk.yacc-template.json",
+      "tags": [
+        "writing",
+        "weekly"
+      ]
+    },
+    {
+      "id": "website-builder",
+      "name": "Website builder",
+      "description": "Design and build a website or web app, tested in a real browser. Each task is a branch and a pull request, reviewed on GitHub.",
+      "url": "website-builder.yacc-template.json",
+      "tags": [
+        "software",
+        "github"
+      ]
+    }
+  ]
+}

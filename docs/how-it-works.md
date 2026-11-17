@@ -174,6 +174,9 @@ HQ never stores key values and never reads your env files.
 | `.yacc/plan.json` (in your repo) | Boards and tasks | Yes |
 | `docs/plan.md` (in your repo) | A readable copy of the plan, if **Settings → Project → Export plan** is on | Yes |
 | `~/.yacc/<project>/` | Agents' folders, app variables, action items, the skills cache, when each schedule last ran, and HQ's own records | No, it's outside your repo, on your machine only |
+| `~/.yacc/<project>/audit/` | The audit log, one file a month | No |
+| `~/.yacc/projects.json` | The repos you've run HQ in, for the project switcher | No |
+| `~/.yacc/templates/` | Templates you saved or installed for yourself | No |
 
 **Remove a project:** delete each agent in Settings → Team (this removes its sandbox and, if you choose, its folder), then delete `~/.yacc/<project>`.
 
@@ -379,6 +382,8 @@ A **template** is a whole setup for one purpose: the roles (and their instructio
 
 **Save your own** in Settings → Project: on this machine (`~/.yacc/templates/<name>/`, offered for every new project) or in this project (`.yacc/templates/<name>/`, commit it to share). A template folder is `template.yml` plus `roles/<id>.md` and `brief.md`; you can write one by hand. Temporary hires, secrets, sandboxes and tasks are never saved.
 
+**Share one:** Settings → Templates → **Export** gives a single `.yacc-template.json` (the template and its skills). Install from a file, a link or the gallery; you see a preview first, schedules come switched off, and nothing is overwritten. See [Sharing templates](sharing-templates.md) and the [template guides](templates/README.md).
+
 The **role library** is a set of ready-made roles: Developer, QA, Designer, Technical writer, Researcher, Writer, Editor, Fact checker, Analyst, Experimenter and Marketer. Add them in Settings → Roles. The lead can see them with `list_roles` and hire into one by its title, with no instructions to write. Library roles can take tasks, and some can review; none can plan, hire or approve.
 
 ## Schedules
@@ -396,3 +401,19 @@ schedules:
   - { name: Weekly report, every: week, day: 5, at: "16:00", action: message, to: lead, text: "Send me a report_to_ceo briefing for the week." }
   - { name: Promote, on: task-done, action: task, title: "Social posts for {title}", to: "role:marketer", text: "Three posts for {title}." }
 ```
+
+## Retrospectives
+
+When a board is done, HQ asks the lead for a retrospective: what went well, what was sent back and why, and what to change in the roles' instructions. The lead reads a role with `read_role` and proposes new instructions with `propose_role_change` and a reason. Each proposal is an **action item** showing the before and after, line by line; **Accept** saves it to `.yacc/roles/<role>.md` (agents get it the next time they start), **Reject** tells the lead why. One open proposal per role: a newer one replaces the older.
+
+Turn the automatic ask off, or ask for one now, in **Settings → Workflow → Retrospectives**. The lead closes a board with `update_board` once all its tasks are done.
+
+## The audit log
+
+Everything that changes who does what, or what's allowed, is recorded with who did it: assignments, reviews and approvals, access grants, keys set or removed (never their values), hires and dismissals, budget holds, schedule runs, template installs, retrospectives, and every config change with what changed ("Ada: model, reportsTo", "role Writer: instructions"). Who is you, an agent, a schedule, HQ itself, or `config.yml` when you edit the file by hand.
+
+Read it in **Settings → Audit log**: filter by kind, by who, or by text, and **Download CSV**. It's kept in `~/.yacc/<project>/audit/`, one JSON-lines file a month; delete old months when you like.
+
+## Several projects
+
+Each repo runs its own HQ. Every HQ adds its repo to `~/.yacc/projects.json` and writes how to reach it (its port and browser token) to `~/.yacc/<project>/session.json`, readable only by you, while it runs. Click the project name in the top bar to see them all: **Open** goes to a running one; **Start & open** starts a stopped one in the background (logging to `~/.yacc/<project>/hq.log`) and opens it when it answers; or type another repo's folder and **Add & open**. **Remove** takes a stopped project off the list and leaves its files alone.

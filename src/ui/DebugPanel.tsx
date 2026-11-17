@@ -51,6 +51,7 @@ function summary(e: OfficeEvent): string {
     case "usage.updated": return "usage";
     case "skills.updated": return `${e.skills.length} project skills`;
     case "schedules.updated": return `${e.schedules.length} schedules`;
+    case "templates.updated": return `${e.templates.length} templates`;
     case "mcp.updated": return `${e.mcp.servers.length} MCP servers`;
     case "access.updated": return `${e.request.agentId} ${e.request.domain} ${e.request.status}`;
   }

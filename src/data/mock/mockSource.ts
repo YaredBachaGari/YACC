@@ -5,6 +5,8 @@ import { stackDomains } from "../stack";
 import { HOST_TERMINAL, LEAD_ROLE_ID, PERMISSIONS, type AccessRequest, AgentConfig, AgentPatch, Board, NewAgentInput, NewRoleInput, OrgPatch, ProjectMemory, ProjectConfig, RolePatch, SandboxSettings, WorkflowPatch } from "../types";
 import { MAX_AGENTS_CEILING, WORKER_BASE_INSTRUCTIONS, findRole, freeRoleId, wouldLoop } from "../roles";
 import { nextAgentName } from "../names";
+import { BUILT_IN_TEMPLATES } from "../templates";
+import { bundleToTemplateLoose, previewTemplate, templateToBundle } from "../templateBundle";
 import { channelsOf, cleanMessaging, isChannel, type MessagingConfig } from "../messaging";
 import { cleanSchedules, fill, nextRun, type Schedule } from "../schedules";
 import { SKILL_NAME, cleanProjectSkills, cleanToolkits, type ProjectSkillChoice, type ToolkitChoice } from "../toolkits";
@@ -58,6 +60,12 @@ export function createMockSource(): OfficeDataSource {
     listener?.({ type: "skills.updated", skills: structuredClone(world.snap.projectSkills) });
   };
 
+  /** The demo's gallery: a couple of templates made from the built-ins, renamed. */
+  const demoGallery = [
+    { id: "newsletter", name: "Newsletter desk", description: "A weekly newsletter: research, write, edit, and you sign off before it goes out.", url: "demo:newsletter", tags: ["writing"], bundle: templateToBundle({ ...BUILT_IN_TEMPLATES[1], id: "newsletter", name: "Newsletter desk", description: "A weekly newsletter: research, write, edit, and you sign off before it goes out.", source: "user" }) },
+    { id: "market-research", name: "Market research", description: "Questions in, a sourced report out: survey, analyse, review.", url: "demo:market-research", tags: ["research"], bundle: templateToBundle({ ...BUILT_IN_TEMPLATES[2], id: "market-research", name: "Market research", description: "Questions in, a sourced report out: survey, analyse, review.", source: "user" }) },
+  ];
+
   function findPreset(id: string): Preset {
     return presets.find((p) => p.id === id) ?? presets[0];
   }
@@ -75,6 +83,19 @@ export function createMockSource(): OfficeDataSource {
   }
 
   function boot() {
+    world.savedConfig = structuredClone(world.snap.config);
+    if (!world.audit.length) {
+      const team = world.snap.config.team;
+      const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
+      const lead = team.find((a) => a.isLead) ?? team[0];
+      const dev = team.find((a) => !a.isLead);
+      world.audit = [
+        ...(dev ? [{ at: ago(4), kind: "assign" as const, actor: lead.id, summary: `Assigned a task to ${dev.name}`, target: dev.id }] : []),
+        { at: ago(32), kind: "access", actor: "you", summary: "Allowed for every sandbox: registry.npmjs.org", target: "registry.npmjs.org" },
+        { at: ago(75), kind: "config", actor: "you", summary: "Changed workflow" },
+        { at: ago(120), kind: "secret", actor: "you", summary: "Set the anthropic key for every sandbox (the value isn't recorded)" },
+      ];
+    }
     world.snap.schedules = (world.snap.config.schedules ?? []).map((s) => ({ id: s.id, lastRun: null, lastResult: null, nextRun: s.enabled && s.every ? (nextRun(s, new Date())?.toISOString() ?? null) : null }));
     world.snap.projectSkills = [...mockSkills.values()].sort((a, b) => a.name.localeCompare(b.name)).map((x) => ({ name: x.name, description: x.description, problem: null }));
     world.setEmitter((e) => listener?.(e));
@@ -248,6 +269,7 @@ export function createMockSource(): OfficeDataSource {
       const task = world.task(taskId);
       const agent = world.cfg(agentId);
       if (!task || !agent || agent.isLead || task.status !== "todo") return;
+      world.record("assign", "you", `Assigned ${task.id} "${task.title}" to ${agent.name}`, task.id);
       world.patchTask(taskId, { ownerId: agentId });
       world.activity("task.assigned", null, `You assigned ${taskId} ${task.title} to ${agent.name}`);
       if (!sim.hasJob(agentId) && world.status(agentId)?.state === "idle") {
@@ -363,6 +385,7 @@ export function createMockSource(): OfficeDataSource {
 
     setSecret(agentId, service, value) {
       void value; // A real source pipes this to `sbx secret set`; HQ never keeps it.
+      world.record("secret", "you", `Set the ${service} key ${agentId ? `for ${world.name(agentId)}'s sandbox` : "for every sandbox"} (the value isn't recorded)`);
       const sbx = world.snap.sbx;
       if (agentId === null) sbx.globalKeys = [...new Set([...sbx.globalKeys, service])];
       else if (sbx.agents[agentId]) sbx.agents[agentId].keys = [...new Set([...sbx.agents[agentId].keys, service])];
@@ -397,6 +420,16 @@ export function createMockSource(): OfficeDataSource {
       item.note = note?.trim() || null;
       item.closedAt = new Date().toISOString();
       world.emit({ type: "action.updated", item: { ...item } });
+      if (item.kind === "role-change") {
+        const role = world.snap.config.roles.find((r) => r.id === item.payload?.roleId);
+        if (decision === "done" && role) {
+          role.instructions = String(item.payload?.after ?? role.instructions);
+          world.configChanged();
+        }
+        world.record("retro", "you", `${decision === "done" ? "Accepted" : "Rejected"} the change to the ${role?.title ?? "?"} role`, role?.id);
+        world.message("hq", item.fromId, `The CEO ${decision === "done" ? "accepted" : "rejected"} your change to the ${role?.title ?? "?"} role.${item.note ? ` Note: ${item.note}` : ""}`);
+        return;
+      }
       world.message("you", item.fromId, decision === "done" ? `Done: ${item.title}${item.note ? ` (${item.note})` : ""}` : `Dismissed: ${item.title}${item.note ? ` (${item.note})` : ""}`);
     },
 
@@ -561,6 +594,97 @@ export function createMockSource(): OfficeDataSource {
       world.configChanged();
     },
 
+    async previewTemplate(src) {
+      try {
+        const raw = src.url ? demoGallery.find((g) => g.url === src.url)?.bundle : src.bundle;
+        if (!raw) return { error: "The demo can only fetch its own gallery." };
+        return { preview: previewTemplate(bundleToTemplateLoose(raw)) };
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) };
+      }
+    },
+
+    async importTemplate(src, where) {
+      try {
+        const raw = src.url ? demoGallery.find((g) => g.url === src.url)?.bundle : src.bundle;
+        if (!raw) return { error: "The demo can only fetch its own gallery." };
+        const t = bundleToTemplateLoose(raw, where);
+        world.snap.templates = [...(world.snap.templates ?? BUILT_IN_TEMPLATES).filter((x) => x.id !== t.id), t];
+        listener?.({ type: "templates.updated", templates: structuredClone(world.snap.templates) });
+        world.record("template", "you", `Installed the template "${t.name}" ${where === "project" ? "in this project" : "for you"}`, t.id);
+        world.activity("config", null, `Installed the template "${t.name}".`);
+        return { id: t.id, name: t.name };
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) };
+      }
+    },
+
+    async exportTemplate(id) {
+      const t = (world.snap.templates ?? BUILT_IN_TEMPLATES).find((x) => x.id === id);
+      return t ? templateToBundle(t) : { error: `No template ${id}.` };
+    },
+
+    async deleteTemplate(id) {
+      const list = world.snap.templates ?? BUILT_IN_TEMPLATES;
+      const t = list.find((x) => x.id === id);
+      if (!t || t.source === "built-in") return { error: "Built-in templates can't be deleted." };
+      world.snap.templates = list.filter((x) => x.id !== id);
+      listener?.({ type: "templates.updated", templates: structuredClone(world.snap.templates) });
+      return {};
+    },
+
+    async listProjects() {
+      const cfg = world.snap.config;
+      const ago = (h: number) => new Date(Date.now() - h * 3600_000).toISOString();
+      return {
+        projects: [
+          { slug: cfg.project.id, name: cfg.project.name, root: cfg.project.path, port: 7420, running: true, current: true, missing: false, lastOpened: ago(0) },
+          { slug: "studio", name: "Studio", root: "~/projects/studio", port: 7421, running: true, current: false, missing: false, lastOpened: ago(20) },
+          { slug: "lab-notes", name: "Lab notes", root: "~/projects/lab-notes", port: 7422, running: false, current: false, missing: false, lastOpened: ago(96) },
+        ],
+      };
+    },
+
+    async openProject() {
+      return { error: "The demo has only this project. Run YACC (npx yacc-hq) to switch between your own." };
+    },
+
+    async forgetProject() {
+      return { error: "The demo's list can't change." };
+    },
+
+    async readGallery() {
+      return { templates: demoGallery.map(({ bundle: _b, ...g }) => g) };
+    },
+
+    requestRetrospective() {
+      const lead = world.lead();
+      const role = world.snap.config.roles.find((r) => r.id !== lead.roleId && world.snap.config.team.some((a) => a.roleId === r.id));
+      world.message("hq", lead.id, "[Retrospective] Look back on the last board and propose changes to role instructions.");
+      world.record("retro", "you", "Asked for a retrospective");
+      if (!role) return;
+      world.after(2.5, () => {
+        const after = `${role.instructions.trim()}\n- Before you open a pull request, run the whole test suite, not just the tests for your change.`;
+        const item = {
+          id: `ai${Date.now().toString(36)}`, kind: "role-change" as const, fromId: lead.id, taskId: null,
+          title: `Change the ${role.title} role's instructions`,
+          details: "Two PRs this board broke tests outside the files they changed; the full suite would have caught it.",
+          payload: { roleId: role.id, before: role.instructions, after, reason: "Two PRs this board broke tests outside the files they changed." },
+          waiting: false, status: "open" as const, note: null, at: new Date().toISOString(), closedAt: null,
+        };
+        world.snap.actionItems = [item, ...(world.snap.actionItems ?? [])];
+        world.emit({ type: "action.updated", item: { ...item } });
+        world.activity("agent.needs-input", lead.id, `${lead.name} proposes a change to the ${role.title} role (retrospective)`);
+      });
+    },
+
+    async readAudit(q) {
+      const limit = Math.min(Math.max(q.limit ?? 100, 1), 1000);
+      const words = q.text?.trim().toLowerCase();
+      const all = world.audit.filter((e) => (!q.before || e.at < q.before) && (!q.kind || e.kind === q.kind) && (!q.actor || e.actor === q.actor) && (!words || `${e.summary} ${e.target ?? ""}`.toLowerCase().includes(words)));
+      return { entries: all.slice(0, limit), more: all.length > limit };
+    },
+
     updateSchedules(list: Schedule[]) {
       const cfg = world.snap.config;
       const clean = cleanSchedules(list);
@@ -586,6 +710,7 @@ export function createMockSource(): OfficeDataSource {
         result = "added a task for the lead to assign";
       }
       mockScheduleRuns.set(id, { at: new Date().toISOString(), result });
+      world.record("schedule", "you", `Ran now "${s.name}": ${result}`, s.id);
       world.activity("config", null, `You ran "${s.name}": ${result}`);
       publishMockSchedules();
     },
@@ -674,6 +799,10 @@ export function createMockSource(): OfficeDataSource {
       if (patch.item?.trim()) wf.item = patch.item.trim();
       if (patch.deliverable) wf.deliverable = patch.deliverable;
       if (patch.stages?.length) wf.stages = patch.stages;
+      if (typeof patch.retrospective === "boolean") {
+        if (patch.retrospective) delete wf.retrospective;
+        else wf.retrospective = false;
+      }
       Object.assign(wf.review, patch.review);
       Object.assign(wf.merge, patch.merge);
       Object.assign(wf.deploy, patch.deploy);
@@ -767,6 +896,7 @@ export function createMockSource(): OfficeDataSource {
       req.status = decision === "deny" ? "denied" : "allowed";
       world.emit({ type: "access.updated", request: { ...req } });
       const who = world.name(req.agentId);
+      world.record("access", "you", `${decision === "deny" ? "Denied" : decision === "everyone" ? "Allowed for every sandbox" : `Allowed for ${who}`}: ${req.domain}`, req.domain);
       if (decision === "deny") {
         world.activity("config", req.agentId, `You denied ${who} access to ${req.domain}`);
         world.write(req.agentId, [{ text: `\x1b[38;2;255;0;77mhq ▸ access to ${req.domain} denied — continuing without it\x1b[0m` }]);

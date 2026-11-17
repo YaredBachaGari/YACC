@@ -130,6 +130,8 @@ function reduce(snap: OfficeSnapshot, e: OfficeEvent): OfficeSnapshot {
       return { ...snap, projectSkills: e.skills };
     case "schedules.updated":
       return { ...snap, schedules: e.schedules };
+    case "templates.updated":
+      return { ...snap, templates: e.templates };
   }
 }
 
@@ -212,6 +214,16 @@ export const officeActions = {
   updateToolkits: source.updateToolkits.bind(source),
   updateMessaging: source.updateMessaging.bind(source),
   updateSchedules: source.updateSchedules.bind(source),
+  readAudit: source.readAudit.bind(source),
+  requestRetrospective: source.requestRetrospective.bind(source),
+  previewTemplate: source.previewTemplate.bind(source),
+  importTemplate: source.importTemplate.bind(source),
+  exportTemplate: source.exportTemplate.bind(source),
+  deleteTemplate: source.deleteTemplate.bind(source),
+  readGallery: source.readGallery.bind(source),
+  listProjects: source.listProjects.bind(source),
+  openProject: source.openProject.bind(source),
+  forgetProject: source.forgetProject.bind(source),
   runSchedule: source.runSchedule.bind(source),
   updateProjectSkills: source.updateProjectSkills.bind(source),
   saveProjectSkill: source.saveProjectSkill.bind(source),

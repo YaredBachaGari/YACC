@@ -10,10 +10,10 @@ if (args.includes("--version") || args.includes("-v")) {
   process.exit(0);
 }
 if (args.includes("--help") || args.includes("-h")) {
-  console.log(`YACC ${pkg.version} — a pixel office for your team of AI coding agents.
+  console.log(`YACC ${pkg.version} — a command center for teams of AI agents.
 
 Usage:
-  yacc-hq [options]              run inside a git repo
+  yacc-hq [options]              run inside a git repo (any project: code, writing, research)
 
 Options:
   --repo <path>   the git repo to manage (default: current folder)
@@ -22,7 +22,8 @@ Options:
   -v, --version   print the version
   -h, --help      show this help
 
-Needs: Docker Sandboxes (sbx) or Claude Code/Codex, tmux, git, gh.
+Needs: Node.js 20+ and git. Agents run in Docker Sandboxes (sbx), or in Local
+mode with Claude Code, Codex or Gemini CLI. GitHub (gh) only for pull requests.
 HQ checks all of this on start and shows how to fix anything missing.
 Docs: ${pkg.homepage ?? "https://github.com/YaredBachaGari/YACC"}`);
   process.exit(0);

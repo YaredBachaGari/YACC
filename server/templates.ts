@@ -14,6 +14,7 @@ import { AGENT_CLIS, GATES, LEAD_ROLE_ID, PERMISSIONS, type HqConfig } from "../
 import { cleanProjectSkills, cleanToolkits, parseSkillMd, projectSkillsYaml, toolkitsYaml } from "../src/data/toolkits";
 import { MCP_NAME } from "./sbxMcp";
 import { cleanSchedules } from "../src/data/schedules";
+import type { Hub } from "./hub";
 import { skillsDir } from "./projectSkills";
 
 const roleFileRef = (id: string) => `roles/${roleSlug(id)}.md`;
@@ -49,7 +50,7 @@ export function readTemplate(dir: string, source: Template["source"]): Template 
   }
   const t = parsed.data;
   // Only roles/<id>.md and brief.md inside the folder are read; anything else is the text itself.
-  const text = (value: string) => (/^(roles\/[a-z0-9-]+\.md|brief\.md)$/.test(value.trim()) && existsSync(join(dir, value.trim())) ? readFileSync(join(dir, value.trim()), "utf8").trim() : value);
+  const text = (value: string) => (/^(roles\/[a-z0-9-]+\.md|brief\.md)$/.test(value.trim()) && existsSync(join(dir, value.trim())) ? readFileSync(join(dir, value.trim()), "utf8").replace(/\r\n/g, "\n").trim() : value);
   const roles = Object.entries(t.roles).map(([id, r]) => {
     const tools = [...new Set((r.tools ?? []).map((x) => x.trim().toLowerCase()).filter((x) => MCP_NAME.test(x)))];
     return { id: roleSlug(id), title: r.title, can: r.can, instructions: text(r.instructions), ...(r.cli ? { cli: r.cli } : {}), ...(r.model ? { model: r.model } : {}), ...(tools.length ? { tools } : {}) };
@@ -64,7 +65,7 @@ export function readTemplate(dir: string, source: Template["source"]): Template 
   const skills: TemplateSkill[] = [];
   for (const c of cleanProjectSkills(t.skills, roleIds)) {
     const folder = join(dir, "skills", c.name);
-    const parsed = existsSync(join(folder, "SKILL.md")) ? parseSkillMd(readFileSync(join(folder, "SKILL.md"), "utf8")) : null;
+    const parsed = existsSync(join(folder, "SKILL.md")) ? parseSkillMd(readFileSync(join(folder, "SKILL.md"), "utf8").replace(/\r\n/g, "\n")) : null;
     if (!parsed?.description) throw new Error(`${file}: the skill "${c.name}" needs skills/${c.name}/SKILL.md with a description.`);
     skills.push({ name: c.name, description: parsed.description, body: parsed.body, dir: folder, ...(c.roles ? { roles: c.roles } : {}) });
   }
@@ -91,6 +92,16 @@ export function readTemplate(dir: string, source: Template["source"]): Template 
 
 const userDir = () => join(homedir(), ".yacc", "templates");
 const projectDir = (repoRoot: string) => join(repoRoot, ".yacc", "templates");
+/** Where saved templates live: this project's (.yacc/templates/) or yours (~/.yacc/templates/). */
+export const templateDir = (where: "project" | "user", repoRoot: string) => (where === "project" ? projectDir(repoRoot) : userDir());
+
+/** Re-reads the templates the welcome and Settings offer, and tells the browsers. */
+export function refreshTemplates(hub: Hub) {
+  const found = listTemplates(hub.repo.root);
+  hub.snap.templates = found.templates;
+  hub.emit({ type: "templates.updated", templates: structuredClone(found.templates) });
+  return found.problems;
+}
 
 /** Built-ins, then this project's, then yours. A folder that can't be read is skipped and reported. */
 export function listTemplates(repoRoot: string): { templates: Template[]; problems: string[] } {

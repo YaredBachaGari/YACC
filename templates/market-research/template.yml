@@ -1,0 +1,51 @@
+# A YACC team template from the gallery. Install it from Settings → Templates or the welcome screen.
+name: Market research
+description: Questions in, a sourced report out. Scope the question, research it, analyse what was found, and you approve the report.
+officeName: Research Room
+theme: lab
+item: Question
+deliverable: files
+stages:
+  - { id: scope, name: Scope, owner: lead, gate: none, description: "The question, what a useful answer looks like and the sources to try are in shared/scope/." }
+  - { id: research, name: Research, owner: researcher, gate: none, description: "Findings, each graded with the source-grading skill, are in shared/research/." }
+  - { id: analyse, name: Analyse, owner: analyst, gate: review, reviewer: lead, description: "The analysis answers the question, says how sure we are, and why." }
+  - { id: report, name: Report, owner: analyst, gate: ceo, description: "A two-page report with the answer, the evidence and the open questions." }
+roles:
+  lead:
+    title: Research lead
+    can: [plan, assign, review, hire, work]
+    instructions: |
+      You turn the CEO's questions into research that answers them.
+      - Each question is one task. Do its Scope stage yourself: restate the question, what a useful answer looks like, and where to look.
+      - Review analyses for whether they answer the question and how strong the evidence is.
+  researcher:
+    title: Researcher
+    can: [work]
+    instructions: |
+      - Find evidence for the scoped question. Prefer primary sources: filings, official statistics, papers, the companies' own pages.
+      - Grade every finding with the source-grading skill and keep its link.
+      - Write findings to shared/research/<question>.md and share it.
+  analyst:
+    title: Analyst
+    can: [work]
+    instructions: |
+      - Work only from the graded findings. Say what they show, what they don't, and how sure we are.
+      - Put numbers in tables, with their sources. Write the report for a busy reader: the answer first.
+team:
+  - { name: Rosa, role: lead }
+  - { name: Leo, role: researcher }
+  - { name: Kai, role: researcher }
+  - { name: Alan, role: analyst }
+autonomy: { hire: ask, dismiss: notify }
+maxAgents: 6
+brief: |
+  # Brief
+
+  The market or product area, who the research is for, and the decisions it should inform. (Replace this with your own.)
+toolkits:
+  - documents
+  - { id: web-research, roles: [researcher] }
+skills:
+  - { name: source-grading, roles: [researcher, analyst] }
+schedules:
+  - { id: monthly-roundup, name: Monthly roundup, enabled: false, every: month, day: 1, at: "09:00", action: message, to: lead, text: "Send me a report_to_ceo briefing: the questions answered last month, what we learned, and what's still open." }

@@ -1,12 +1,24 @@
 // The real data source: a WebSocket to the local HQ server.
 // Server → browser: OfficeEvent JSON. Browser → server: { cmd, args }.
 
+import type { AuditEntry } from "../audit";
+import type { GalleryEntry, TemplateBundle } from "../templateBundle";
+import type { ProjectEntry } from "../projects";
 import type { OfficeDataSource, OfficeEvent } from "../source";
 
 export function createWsSource(token: string): OfficeDataSource {
   let ws: WebSocket | null = null;
   const queue: string[] = [];
 
+  /** A JSON POST to HQ's template routes; errors come back as { error }. */
+  const api = async <T,>(path: string, body: unknown): Promise<T & { error?: string }> => {
+    try {
+      const r = await fetch(`${path}?token=${encodeURIComponent(token)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      return (await r.json()) as T & { error?: string };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) } as T & { error?: string };
+    }
+  };
   const send = (cmd: string, ...args: unknown[]) => {
     const msg = JSON.stringify({ cmd, args });
     if (ws?.readyState === WebSocket.OPEN) ws.send(msg);
@@ -95,6 +107,34 @@ export function createWsSource(token: string): OfficeDataSource {
     updateToolkits: (list) => send("updateToolkits", list),
     updateMessaging: (m) => send("updateMessaging", m),
     updateSchedules: (list) => send("updateSchedules", list),
+    requestRetrospective: (boardId) => send("requestRetrospective", boardId ?? null),
+    previewTemplate: (src) => api("/api/templates/preview", src),
+    importTemplate: (src, where) => api("/api/templates/import", { ...src, where }),
+    exportTemplate: async (id) => {
+      const r = await fetch(`/api/templates/export?token=${encodeURIComponent(token)}&id=${encodeURIComponent(id)}`);
+      return (await r.json()) as TemplateBundle | { error: string };
+    },
+    deleteTemplate: (id) => api("/api/templates/delete", { id }),
+    listProjects: async () => {
+      try {
+        const r = await fetch(`/api/projects?token=${encodeURIComponent(token)}`);
+        return (await r.json()) as { projects?: ProjectEntry[]; error?: string };
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) };
+      }
+    },
+    openProject: (ref) => api("/api/projects/open", ref),
+    forgetProject: (slug) => api("/api/projects/forget", { slug }),
+    readGallery: async () => {
+      const r = await fetch(`/api/gallery?token=${encodeURIComponent(token)}`);
+      return (await r.json()) as { templates?: GalleryEntry[]; error?: string };
+    },
+    readAudit: async (q) => {
+      const p = new URLSearchParams({ token });
+      for (const [k, v] of Object.entries(q)) if (v !== undefined && v !== "") p.set(k, String(v));
+      const r = await fetch(`/api/audit?${p}`);
+      return r.ok ? ((await r.json()) as { entries: AuditEntry[]; more: boolean }) : { entries: [], more: false };
+    },
     runSchedule: (id) => send("runSchedule", id),
     updateProjectSkills: (list) => send("updateProjectSkills", list),
     saveProjectSkill: (input) => send("saveProjectSkill", input),

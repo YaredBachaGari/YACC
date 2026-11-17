@@ -4,6 +4,10 @@
 //   POST /otlp/<agent>/<token>/v1/metrics|logs   token use from agent programs (OpenTelemetry)
 //   GET  /avatars/<file>?token=…   uploaded profile pictures (browser token)
 //   GET  /skills/<name>?token=…    a project skill's text, for editing (browser token)
+//   GET  /api/audit?token=…        the audit log, newest first (JSON, or CSV with format=csv)
+//   POST /api/templates/{preview,import,delete}?token=…, GET /api/templates/export?…&id=…, GET /api/gallery?token=…
+//                                  sharing templates (browser token)
+//   GET  /api/projects?token=…, POST /api/projects/{open,forget}?token=…   the project switcher (browser token)
 //   GET  /api/health
 //   GET  /*                     the built UI (dist/), when present
 
@@ -15,7 +19,7 @@ import { timingSafeEqual } from "node:crypto";
 import { WebSocketServer, type WebSocket } from "ws";
 import type { OfficeEvent } from "../src/data/source";
 import { handleHook } from "./hooks";
-import type { Hub } from "./hub";
+import { Hub } from "./hub";
 import type { Inbox } from "./inbox";
 import { handleMcp } from "./mcp";
 import type { Planner } from "./planner";
@@ -25,6 +29,12 @@ import { log } from "./lib/log";
 import { decodeLogs, decodeMetrics } from "./otlp";
 import { readAvatar } from "./avatars";
 import { readProjectSkill } from "./projectSkills";
+import { checkBundle, deleteTemplate, exportTemplate, fetchJson, installBundle, readGallery, ShareError } from "./templateShare";
+import { BUNDLE_MAX_BYTES, bundleFileName } from "../src/data/templateBundle";
+import { refreshTemplates } from "./templates";
+import { forgetProject, listProjects, openProject, ProjectError } from "./projects";
+import type { AuditLog } from "./audit";
+import { AUDIT_KINDS, auditCsv } from "../src/data/audit";
 import type { Usage } from "./usage";
 
 const MIME: Record<string, string> = {
@@ -79,6 +89,7 @@ interface Options {
   allowedOrigins: string[];
   commands: Record<string, (...args: unknown[]) => unknown>;
   usage?: Usage;
+  audit?: AuditLog;
 }
 
 export function startHttp(o: Options) {
@@ -141,7 +152,7 @@ export function startHttp(o: Options) {
       if (req.method === "GET" || req.method === "DELETE") return send(res, 405, "stateless server");
       try {
         const raw = await readBody(req, 1024 * 1024);
-        return await handleMcp(o.hub, o.planner, o.team, o.mcpExtras, agentId, req, res, raw ? JSON.parse(raw) : undefined);
+        return await Hub.as(agentId, () => handleMcp(o.hub, o.planner, o.team, o.mcpExtras, agentId, req, res, raw ? JSON.parse(raw) : undefined));
       } catch {
         return res.headersSent ? void res.end() : send(res, 400, "bad request");
       }
@@ -162,6 +173,85 @@ export function startHttp(o: Options) {
       if (!skill) return send(res, 404, "not found");
       res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
       return void res.end(JSON.stringify(skill));
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/audit") {
+      if (!safeEqual(url.searchParams.get("token") ?? "", o.browserToken)) return send(res, 401, "unauthorized");
+      const p = url.searchParams;
+      const kind = AUDIT_KINDS.find((k) => k.id === p.get("kind"))?.id;
+      const result = o.audit?.read({ before: p.get("before") ?? undefined, limit: Number(p.get("limit") ?? 100), kind, actor: p.get("actor") ?? undefined, text: p.get("text") ?? undefined }) ?? { entries: [], more: false };
+      if (p.get("format") === "csv") {
+        res.writeHead(200, { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="yacc-audit-${o.hub.slug}.csv"`, "Cache-Control": "no-store" });
+        return void res.end(auditCsv(result.entries, o.hub.snap.config));
+      }
+      res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+      return void res.end(JSON.stringify(result));
+    }
+
+    if (url.pathname === "/api/projects" || url.pathname.startsWith("/api/projects/")) {
+      if (!safeEqual(url.searchParams.get("token") ?? "", o.browserToken)) return send(res, 401, "unauthorized");
+      const json = (code: number, body: unknown) => {
+        res.writeHead(code, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+        res.end(JSON.stringify(body));
+      };
+      try {
+        if (req.method === "GET" && url.pathname === "/api/projects") return json(200, { projects: await listProjects(o.hub.slug) });
+        if (req.method !== "POST") return send(res, 405, "");
+        const body = JSON.parse((await readBody(req)) || "{}") as { slug?: string; root?: string };
+        if (url.pathname === "/api/projects/open") {
+          const r = await openProject({ slug: typeof body.slug === "string" ? body.slug : undefined, root: typeof body.root === "string" ? body.root : undefined }, o.hub.slug);
+          if (r.started) o.hub.audit("config", `Started HQ for the project ${r.slug}`, r.slug, "you");
+          return json(200, r);
+        }
+        if (url.pathname === "/api/projects/forget") {
+          await forgetProject(String(body.slug ?? ""), o.hub.slug);
+          return json(200, { projects: await listProjects(o.hub.slug) });
+        }
+        return send(res, 404, "not found");
+      } catch (err) {
+        return json(err instanceof ProjectError || err instanceof SyntaxError ? 400 : 500, { error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+
+    if (url.pathname.startsWith("/api/templates/") || url.pathname === "/api/gallery") {
+      if (!safeEqual(url.searchParams.get("token") ?? "", o.browserToken)) return send(res, 401, "unauthorized");
+      const json = (code: number, body: unknown, extra: Record<string, string> = {}) => {
+        res.writeHead(code, { "Content-Type": "application/json", "Cache-Control": "no-store", ...extra });
+        res.end(JSON.stringify(body));
+      };
+      const root = o.hub.repo.root;
+      try {
+        if (req.method === "GET" && url.pathname === "/api/gallery") return json(200, { templates: await readGallery() });
+        if (req.method === "GET" && url.pathname === "/api/templates/export") {
+          const id = url.searchParams.get("id") ?? "";
+          const bundle = exportTemplate(id, root);
+          return json(200, bundle, { "Content-Disposition": `attachment; filename="${bundleFileName(String(bundle.template.name ?? "template"))}"` });
+        }
+        if (req.method !== "POST") return send(res, 405, "");
+        const body = JSON.parse((await readBody(req, BUNDLE_MAX_BYTES + 64 * 1024)) || "{}") as { bundle?: unknown; url?: string; where?: string; id?: string };
+        const source = async () => (typeof body.url === "string" && body.url.trim() ? fetchJson(body.url) : body.bundle);
+        if (url.pathname === "/api/templates/preview") {
+          const { preview } = checkBundle(await source());
+          return json(200, { preview });
+        }
+        if (url.pathname === "/api/templates/import") {
+          const where = body.where === "project" ? "project" : "user";
+          const done = await Hub.as("you", async () => installBundle(await source(), where, root));
+          refreshTemplates(o.hub);
+          o.hub.audit("template", `Installed the template "${done.name}" ${where === "project" ? "in this project" : "for you"}${typeof body.url === "string" && body.url ? ` from ${body.url.slice(0, 200)}` : ""}`, done.id, "you");
+          o.hub.activity("config", null, `Installed the template "${done.name}". Start a project from it, or see it in Settings → Templates.`);
+          return json(200, done);
+        }
+        if (url.pathname === "/api/templates/delete") {
+          deleteTemplate(String(body.id ?? ""), root);
+          refreshTemplates(o.hub);
+          o.hub.audit("template", `Deleted the template ${String(body.id)}`, String(body.id), "you");
+          return json(200, { ok: true });
+        }
+        return send(res, 404, "not found");
+      } catch (err) {
+        return json(err instanceof ShareError || err instanceof SyntaxError ? 400 : 500, { error: err instanceof Error ? err.message : String(err) });
+      }
     }
 
     if (url.pathname === "/api/health") return send(res, 200, JSON.stringify({ ok: true }), "application/json");
@@ -198,7 +288,7 @@ export function startHttp(o: Options) {
         const msg = JSON.parse(String(raw)) as { cmd?: string; args?: unknown[] };
         const fn = msg.cmd ? o.commands[msg.cmd] : undefined;
         if (!fn) return log.warn("unknown command", msg.cmd);
-        await fn(...(Array.isArray(msg.args) ? msg.args : []));
+        await Hub.as("you", () => fn(...(Array.isArray(msg.args) ? msg.args : [])));
       } catch (err) {
         log.warn("command failed:", err instanceof Error ? err.message : err);
       }

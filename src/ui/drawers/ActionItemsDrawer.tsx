@@ -1,3 +1,4 @@
+import { foldDiff, lineDiff } from "../../data/diff";
 import { useState } from "react";
 import type { ActionItem } from "../../data/types";
 import { officeActions, selectAttention, useOffice } from "../../store/office";
@@ -110,6 +111,41 @@ function Row({ text, color, onOpen }: { text: string; color?: string; onOpen: ()
   );
 }
 
+/** A retrospective's proposed change to a role: the reason, the change line by line, accept or reject. */
+function RoleChange({ item, note, setNote }: { item: ActionItem; note: string; setNote: (v: string) => void }) {
+  const before = String(item.payload?.before ?? "");
+  const after = String(item.payload?.after ?? "");
+  const lines = foldDiff(lineDiff(before, after));
+  return (
+    <div className="mt-2">
+      <div className="scroll-thin max-h-[260px] overflow-auto border-2 border-ink bg-cream font-term text-[14px] leading-tight" aria-label="Proposed change">
+        {lines.map((l, i) =>
+          l.op === "fold" ? (
+            <div key={i} className="px-2 text-muted">
+              … {l.count} unchanged line{l.count === 1 ? "" : "s"}
+            </div>
+          ) : (
+            <div key={i} className="whitespace-pre-wrap px-2" style={{ background: l.op === "add" ? "#d9f7d9" : l.op === "remove" ? "#ffe1e1" : undefined }}>
+              {l.op === "add" ? "+ " : l.op === "remove" ? "- " : "  "}
+              {l.text || " "}
+            </div>
+          ),
+        )}
+      </div>
+      <div className="mt-2 flex items-center gap-2">
+        <input className="field min-w-0 flex-1 text-[13px]" value={note} placeholder="Note for the lead (optional)" onChange={(e) => setNote(e.target.value)} />
+        <button className="btn px-2 text-[12px]" onClick={() => officeActions.resolveActionItem(item.id, "done", note)}>
+          Accept
+        </button>
+        <button className="btn px-2 text-[12px]" onClick={() => officeActions.resolveActionItem(item.id, "dismissed", note)}>
+          Reject
+        </button>
+      </div>
+      <p className="m-0 mt-1 text-[11px] text-muted">Accepting rewrites .yacc/roles/{String(item.payload?.roleId ?? "")}.md. Agents with the role get it on their next start.</p>
+    </div>
+  );
+}
+
 function Item({ item, from, now }: { item: ActionItem; from?: { id: string; name: string; color: string }; now: number }) {
   const [note, setNote] = useState("");
   const [expanded, setExpanded] = useState(false);
@@ -136,7 +172,9 @@ function Item({ item, from, now }: { item: ActionItem; from?: { id: string; name
           {expanded ? "Show less" : "Show all"}
         </button>
       )}
-      {item.kind === "approval" ? (
+      {item.kind === "role-change" ? (
+        <RoleChange item={item} note={note} setNote={setNote} />
+      ) : item.kind === "approval" ? (
         <div className="mt-2 flex items-center gap-2">
           <input
             className="field min-w-0 flex-1 text-[13px]"

@@ -1,0 +1,106 @@
+{
+  "format": "yacc-template",
+  "version": 1,
+  "template": {
+    "name": "Website builder",
+    "description": "Design and build a website or web app, tested in a real browser. Each task is a branch and a pull request, reviewed on GitHub.",
+    "theme": "modern",
+    "item": "Task",
+    "deliverable": "pull-request",
+    "stages": [
+      {
+        "id": "build",
+        "name": "Build",
+        "owner": "any",
+        "gate": "pull-request",
+        "description": "The change is in a pull request, tested in the browser, with screenshots in its description."
+      }
+    ],
+    "roles": {
+      "lead": {
+        "title": "Lead",
+        "can": [
+          "plan",
+          "assign",
+          "review",
+          "hire"
+        ],
+        "instructions": "## Coding rules\n- You never write app code.\n- Keep tasks small: one task = one branch = one PR. Give each task the files it may edit and a clear done-when.\n- Design tasks come before the build tasks that use them.\n"
+      },
+      "designer": {
+        "title": "Designer",
+        "can": [
+          "work"
+        ],
+        "instructions": "- Design the pages the task asks for in code (HTML/CSS or the project's components), following the frontend-design skill.\n- Keep to the project's look unless the task says otherwise; explain your choices in the PR.\n"
+      },
+      "developer": {
+        "title": "Developer",
+        "can": [
+          "work"
+        ],
+        "instructions": "- Build what the task asks for, on its own branch, and open a pull request titled [TASK-ID] Short title.\n- Check your change in a browser and follow the accessibility-checklist skill before opening the PR.\n"
+      },
+      "qa": {
+        "title": "QA",
+        "can": [
+          "work",
+          "review"
+        ],
+        "instructions": "- Test what was built against its done-when in a real browser, with the webapp-testing skill. Try the unhappy paths.\n- For each problem: steps to reproduce, what you expected, what happened, a screenshot.\n"
+      }
+    },
+    "team": [
+      {
+        "name": "Michael",
+        "role": "lead"
+      },
+      {
+        "name": "Iris",
+        "role": "designer"
+      },
+      {
+        "name": "Dwight",
+        "role": "developer"
+      },
+      {
+        "name": "Pam",
+        "role": "qa"
+      }
+    ],
+    "autonomy": {
+      "hire": "notify",
+      "dismiss": "notify"
+    },
+    "maxAgents": 6,
+    "toolkits": [
+      {
+        "id": "frontend-design",
+        "roles": [
+          "designer",
+          "developer"
+        ]
+      },
+      {
+        "id": "web-testing",
+        "roles": [
+          "developer",
+          "qa"
+        ]
+      }
+    ],
+    "skills": [
+      {
+        "name": "accessibility-checklist",
+        "roles": [
+          "designer",
+          "developer",
+          "qa"
+        ]
+      }
+    ]
+  },
+  "files": {
+    "skills/accessibility-checklist/SKILL.md": "---\nname: accessibility-checklist\ndescription: \"Use before opening or approving a pull request that changes a page: the accessibility checks it must pass.\"\n---\n\n# Accessibility checklist\n\nCheck every page your change touches:\n\n- Everything works with the keyboard alone: Tab reaches each control in a sensible order, focus is always visible, Escape closes dialogs.\n- Text contrast is at least 4.5:1 (3:1 for large text and icons that carry meaning).\n- Every image has alt text (empty alt=\"\" for decoration); every form field has a visible label.\n- Headings go in order (one h1, then h2…), and links say where they go.\n- Nothing flashes, and animations respect prefers-reduced-motion.\n- The page still works at 200% zoom and 320px wide.\n\nNote what you checked in the PR description.\n"
+  }
+}

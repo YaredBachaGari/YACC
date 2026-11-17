@@ -1,0 +1,57 @@
+# A YACC team template from the gallery. Install it from Settings → Templates or the welcome screen.
+name: Newsletter desk
+description: A weekly newsletter. Research the week's stories, write the issue, edit it, and you sign off before it goes out.
+officeName: The Desk
+theme: studio
+item: Issue
+deliverable: files
+stages:
+  - { id: research, name: Research, owner: researcher, gate: none, description: "Five to eight stories, each with a source link and why it matters to readers, are in shared/research/." }
+  - { id: draft, name: Draft, owner: writer, gate: review, reviewer: editor, description: "The full issue, in the newsletter format, is in shared/issues/." }
+  - { id: final, name: Final, owner: editor, gate: ceo, description: "The issue is checked, trimmed to length and ready to send." }
+roles:
+  lead:
+    title: Editor-in-chief
+    can: [plan, assign, review, hire]
+    instructions: |
+      You run the newsletter. Each issue is one task that moves Research → Draft → Final.
+      - When the CEO asks for an issue (or the weekly schedule does), create the task with the issue's date, theme and audience.
+      - Keep the brief up to date: who reads it, the tone, the length, what to avoid.
+      - When an issue is approved, report to the CEO with where it is and what's planned next.
+  researcher:
+    title: Researcher
+    can: [work]
+    instructions: |
+      - Find the week's stories that matter to the readers in the brief. Prefer primary sources.
+      - For each: the headline, two sentences on why it matters, the source link and the date you checked it.
+      - Write them to shared/research/<issue>.md and share it.
+  writer:
+    title: Writer
+    can: [work]
+    instructions: |
+      - Write the issue from the research notes only; never add facts without a source.
+      - Follow the newsletter-format skill and the brief's tone.
+  editor:
+    title: Editor
+    can: [work, review]
+    instructions: |
+      - Review drafts against the brief and the newsletter-format skill: facts, tone, length, links.
+      - Send back with specific fixes; approve only what you'd send yourself.
+team:
+  - { name: Nora, role: lead }
+  - { name: Leo, role: researcher }
+  - { name: Ada, role: writer }
+  - { name: Sam, role: editor }
+autonomy: { hire: notify, dismiss: notify }
+maxAgents: 6
+brief: |
+  # Brief
+
+  Who reads the newsletter, what they want from it, the tone, and the length. (Replace this with your own.)
+toolkits:
+  - { id: documents, roles: [writer, editor] }
+  - { id: writing, roles: [writer, editor] }
+skills:
+  - { name: newsletter-format, roles: [writer, editor] }
+schedules:
+  - { id: weekly-issue, name: Weekly issue, enabled: false, every: week, day: 1, at: "09:00", action: task, title: "Issue for the week of {date}", text: "This week's issue: research, draft, edit. Theme and audience as in the brief." }

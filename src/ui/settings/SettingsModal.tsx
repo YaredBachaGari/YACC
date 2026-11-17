@@ -8,6 +8,8 @@ import { McpSettings } from "./McpSettings";
 import { ModelsSettings } from "./ModelsSettings";
 import { MemorySettings } from "./MemorySettings";
 import { OrgChart } from "./OrgChart";
+import { AuditSettings } from "./AuditSettings";
+import { TemplatesSettings } from "./TemplatesSettings";
 import { SchedulesSettings } from "./SchedulesSettings";
 import { RolesSettings } from "./RolesSettings";
 import { TeamSettings } from "./TeamSettings";
@@ -26,6 +28,8 @@ const TABS: { id: SettingsTab; label: string; hint: string }[] = [
   { id: "sandbox", label: "Sandbox", hint: "Network, proxy, secrets" },
   { id: "boards", label: "Boards", hint: "Progress boards" },
   { id: "project", label: "Project", hint: "Repo and HQ" },
+  { id: "templates", label: "Templates", hint: "Share, install, gallery" },
+  { id: "audit", label: "Audit log", hint: "Who did what" },
 ];
 
 export function SettingsModal() {
@@ -81,6 +85,8 @@ export function SettingsModal() {
             {settings.tab === "sandbox" && <SandboxSettingsTab initialAgentId={settings.agentId} />}
             {settings.tab === "boards" && <BoardsSettings />}
             {settings.tab === "project" && <ProjectSettings />}
+            {settings.tab === "audit" && <AuditSettings />}
+            {settings.tab === "templates" && <TemplatesSettings />}
           </div>
         </div>
       </motion.div>

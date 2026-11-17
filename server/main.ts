@@ -31,6 +31,9 @@ import { SharedFiles } from "./shared";
 import { listTemplates } from "./templates";
 import { listProjectSkills } from "./projectSkills";
 import { Scheduler } from "./scheduler";
+import { AuditLog } from "./audit";
+import { Retros } from "./retros";
+import { registerProject, unregisterSession } from "./projects";
 import { Budgets, Usage } from "./usage";
 import { hookCallbacks } from "./hooks";
 
@@ -57,6 +60,7 @@ async function main() {
   for (const c of setup.checks) log.info(`  ${c.status === "ok" ? "✓" : c.status === "warning" ? "!" : "✗"} ${c.label}: ${c.detail}`);
 
   const hub = new Hub(repo, slug, config, loadPlan(repo.root), setup);
+  hub.auditLog = new AuditLog(slug);
   hub.snap.welcome = isNew;
   for (const n of notes) hub.activity("config", null, n);
   const sessions = new Sessions(hub, token);
@@ -84,6 +88,7 @@ async function main() {
   void mcp.refresh();
   const planner = new Planner(hub, inbox);
   const scheduler = new Scheduler(hub, planner);
+  const retros = new Retros(hub, planner);
   planner.actions = new ActionItems(hub, planner);
   const briefings = new Briefings(hub, planner);
   const shared = new SharedFiles(hub);
@@ -159,8 +164,9 @@ async function main() {
     agentToken: token,
     distDir: dev ? null : distDir,
     allowedOrigins: [uiOrigin, `http://127.0.0.1:${uiPort}`, `http://localhost:${port}`, `http://127.0.0.1:${port}`],
-    commands: makeCommands(hub, sessions, planner, sbx, mcp, team, { briefings, memory, budgets, scheduler }),
+    commands: makeCommands(hub, sessions, planner, sbx, mcp, team, { briefings, memory, budgets, scheduler, retros }),
     usage,
+    audit: hub.auditLog ?? undefined,
   });
   // Settings edited by hand in .yacc/config.yml (or roles/*.md) are picked up while HQ runs.
   const stopWatching = watchConfig(repo.root, (result) => {
@@ -175,10 +181,13 @@ async function main() {
   });
   sessions.startPolling();
   if (!hub.snap.welcome) scheduler.start();
+  retros.start();
   sbx.startApprovalPolling();
   const github = new GitHubSync(hub, planner, repo.github);
   github.start();
 
+  // On the project list, with how to reach this HQ (for the switcher in other projects).
+  if (!dev) registerProject(slug, config.project.name, repo.root, port, uiToken);
   const url = `${uiOrigin}/?token=${uiToken}`;
   log.info(`\n\n  YACC is running → ${url}\n`);
   if (!flag("no-open")) {
@@ -195,6 +204,8 @@ async function main() {
     usage.flush();
     stopWatching();
     scheduler.stop();
+    retros.stop();
+    unregisterSession(slug);
     sbx.stopApprovalPolling();
     github.stop();
     process.exit(0);
